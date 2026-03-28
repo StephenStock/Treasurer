@@ -6,6 +6,8 @@ set "DEPLOY_USER=ubuntu"
 set "DEPLOY_KEY=%USERPROFILE%\.ssh\lodge-app.pem"
 set "REMOTE_CMD=cd ~/Treasurer && bash deploy/deploy.sh"
 
+echo Starting deploy to %DEPLOY_USER%@%DEPLOY_HOST%...
+
 where ssh >nul 2>nul
 if errorlevel 1 (
     echo OpenSSH client was not found on PATH.
@@ -22,5 +24,11 @@ if not exist "%DEPLOY_KEY%" (
 )
 
 ssh -i "%DEPLOY_KEY%" -o StrictHostKeyChecking=accept-new %DEPLOY_USER%@%DEPLOY_HOST% "%REMOTE_CMD%"
+if errorlevel 1 (
+    echo Deploy failed.
+    exit /b 1
+)
+
+echo Deploy completed successfully.
 
 endlocal

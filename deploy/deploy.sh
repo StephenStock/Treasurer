@@ -14,12 +14,15 @@ fi
 
 cd "$APP_DIR"
 
+echo "Pulling latest code..."
 git pull --ff-only
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
+  echo "Creating virtual environment..."
   python3 -m venv .venv
 fi
 
+echo "Installing Python dependencies..."
 "$PIP_BIN" install -r requirements.txt
 
 if [[ -f /etc/treasurer/treasurer.env ]]; then
@@ -28,8 +31,10 @@ if [[ -f /etc/treasurer/treasurer.env ]]; then
 fi
 
 if [[ -n "${TREASURER_DATABASE_URL:-}" ]]; then
+  echo "Refreshing database schema..."
   "$PYTHON_BIN" -m flask --app app init-db
 fi
 
+echo "Restarting service..."
 sudo systemctl restart "$SERVICE_NAME"
 sudo systemctl --no-pager --full status "$SERVICE_NAME"
