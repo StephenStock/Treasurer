@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This note records the PostgreSQL setup on the current machine so we can later point the Treasurer app at it from the Family Room PC on the same home network.
+This note records the PostgreSQL setup on the DEN PC so the Treasurer app can point at the same database from whichever machine you use on the home network.
 
 ## Current host
 
@@ -11,6 +11,13 @@ This note records the PostgreSQL setup on the current machine so we can later po
 - Service name: `postgresql-x64-18`
 - LAN IP: `192.168.1.201`
 - Port: `5432`
+
+## Lightsail database
+
+- Region: `eu-west-2`
+- Endpoint: `ls-4a3f9c5fb6c6b2db323a0b9f0a34e7962102a48c.ctasfsdggcyv.eu-west-2.rds.amazonaws.com`
+- Port: `5432`
+- Public mode: disabled
 
 ## Database and role
 
@@ -38,7 +45,7 @@ New-NetFirewallRule -DisplayName "PostgreSQL 5432 Inbound" -Direction Inbound -A
 
 ## App connection string
 
-When we are ready to switch Treasurer from SQLite to PostgreSQL, the app should connect with a URL shaped like this:
+The app now defaults to this PostgreSQL database URL:
 
 ```text
 postgresql://treasurer:lodge@192.168.1.201:5432/treasurer
@@ -47,5 +54,6 @@ postgresql://treasurer:lodge@192.168.1.201:5432/treasurer
 ## Notes
 
 - Keep the database host private on the home network.
-- Do not use OneDrive for the live database file.
-- SQLite remains the current application backend until we explicitly transition.
+- Do not use OneDrive for the live database.
+- If the app needs to point elsewhere, override `TREASURER_DATABASE_URL` before launch.
+- The Lightsail database only accepts connections from Lightsail resources in the same region while public mode is disabled.

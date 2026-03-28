@@ -1,11 +1,11 @@
 # Lodge Treasurer App
 
-Starter web app for a lodge treasurer using Flask, SQLite, and vanilla JavaScript.
+Starter web app for a lodge treasurer using Flask, PostgreSQL, and vanilla JavaScript.
 
 ## What is included
 
 - Flask application factory
-- SQLite database schema with seeded sample data
+- PostgreSQL database connection to the DEN PC with seeded sample data
 - Server-rendered dashboard for members, dues, bookings, and messages
 - `start.bat` launcher for local development
 
@@ -21,12 +21,14 @@ This will:
 
 1. Create a local virtual environment if needed
 2. Install Flask
-3. Initialize the SQLite database on first run
+3. Connect to the PostgreSQL database on the DEN PC
 4. Start the development server at `http://127.0.0.1:5000`
 
-The live SQLite database file is created at `%LOCALAPPDATA%\Treasurer\Lodge.db` by default. You can override that by setting the `TREASURER_DATABASE` environment variable before launching the app.
+The app uses `TREASURER_DATABASE_URL` to decide which database to talk to. By default, it points at the PostgreSQL instance on the DEN PC, so the same data is available whether you launch the app from this machine or there.
 
-`start.bat` prefers `py -3` when available, so the other machine should have Python 3.10 or newer installed.
+If you need to point the app somewhere else, set `TREASURER_DATABASE_URL` before launching it.
+
+`start.bat` prefers `py -3` when available, so whichever machine you use should have Python 3.10 or newer installed.
 
 ## Default seeded account
 

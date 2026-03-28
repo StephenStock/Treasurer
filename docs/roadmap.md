@@ -20,7 +20,7 @@ Build a maintainable web app for lodge treasury administration that can later be
 ### Phase 1: Foundation
 
 - Flask app structure
-- SQLite database
+- PostgreSQL database on the DEN PC
 - Local launcher
 - Seed data
 - Dashboard shell

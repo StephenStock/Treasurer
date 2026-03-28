@@ -1,0 +1,16 @@
+[Unit]
+Description=Treasurer Flask App
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/Treasurer
+EnvironmentFile=-/etc/treasurer/treasurer.env
+ExecStart=/home/ubuntu/Treasurer/.venv/bin/gunicorn --bind 0.0.0.0:5000 app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

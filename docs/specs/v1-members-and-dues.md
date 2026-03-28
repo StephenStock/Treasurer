@@ -136,10 +136,10 @@ Required fields:
 
 ## Acceptance criteria
 
-- The SQLite schema supports configurable member types
-- The SQLite schema supports reporting periods
-- The SQLite schema supports richer member records
-- The SQLite schema supports separate subscription charges and payments
+- The database schema supports configurable member types
+- The database schema supports reporting periods
+- The database schema supports richer member records
+- The database schema supports separate subscription charges and payments
 - The app can still initialize with seed data after the schema update
 - The dashboard can still render annual balances from the revised schema
 
