@@ -32,6 +32,28 @@ def inject_balance_nav_accounts():
 
 def _bank_page_context():
     db = get_db()
+    if db.backend == "postgres":
+        allocation_summary_sql = """
+            COALESCE(
+                STRING_AGG(
+                    lc.display_name || '|' || TO_CHAR(bta.amount, 'FM999999990.00'),
+                    '||'
+                    ORDER BY lc.display_name
+                ),
+                ''
+            ) AS allocation_summary
+        """
+    else:
+        allocation_summary_sql = """
+            COALESCE(
+                GROUP_CONCAT(
+                    lc.display_name || '|' || printf('%.2f', bta.amount),
+                    '||'
+                ),
+                ''
+            ) AS allocation_summary
+        """
+
     categories = db.execute(
         """
         SELECT id, code, display_name, direction
@@ -41,7 +63,7 @@ def _bank_page_context():
     ).fetchall()
 
     transactions = db.execute(
-        """
+        f"""
         SELECT
             bt.id,
             bt.transaction_date,
@@ -51,14 +73,7 @@ def _bank_page_context():
             bt.money_out,
             bt.running_balance,
             bt.is_opening_balance,
-            COALESCE(
-                STRING_AGG(
-                    lc.display_name || '|' || TO_CHAR(bta.amount, 'FM999999990.00'),
-                    '||'
-                    ORDER BY lc.display_name
-                ),
-                ''
-            ) AS allocation_summary
+            {allocation_summary_sql}
         FROM bank_transactions bt
         LEFT JOIN bank_transaction_allocations bta ON bta.bank_transaction_id = bt.id
         LEFT JOIN ledger_categories lc ON lc.id = bta.ledger_category_id
