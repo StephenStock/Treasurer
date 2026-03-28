@@ -12,6 +12,7 @@ auth_bp = Blueprint("auth", __name__)
 PUBLIC_ENDPOINTS = {
     "auth.login",
     "auth.logout",
+    "main.dashboard",
     "main.forms",
     "static",
 }

@@ -1,4 +1,4 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from .db import (
     _dues_status,
@@ -384,6 +384,12 @@ def _members_page_context():
 
 @main_bp.route("/")
 def dashboard():
+    if g.get("current_user") is None:
+        return render_template(
+            "home_public.html",
+            active_page="home",
+        )
+
     db = get_db()
 
     stats = {
