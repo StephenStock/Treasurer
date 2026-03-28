@@ -152,7 +152,7 @@ def _is_postgres_dsn(database_spec: str) -> bool:
     return database_spec.startswith(("postgresql://", "postgres://"))
 
 
-def _schema_sql_for_backend(db: DatabaseHandle, sql: str) -> str:
+def _schema_sql_for_backend(db: "DatabaseHandle", sql: str) -> str:
     if db.backend != "sqlite":
         return sql
 
