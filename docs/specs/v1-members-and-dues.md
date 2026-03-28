@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned
+Delivered and extended
 
 ## Problem
 
@@ -22,7 +22,6 @@ This spec covers:
 
 This spec does not yet cover:
 
-- Authentication and route protection
 - Bank import
 - Cash-night entry
 - Event attendance entry
@@ -143,6 +142,10 @@ Required fields:
 - The database schema supports separate subscription charges and payments
 - The app can still initialize with seed data after the schema update
 - The dashboard can still render annual balances from the revised schema
+
+## Outcome notes
+
+This slice has been implemented and then extended by later work. The live app now also includes authentication, bank workflows, cash workflows, and reporting screens that go beyond the original scope of this spec.
 
 ## Deferred items
 

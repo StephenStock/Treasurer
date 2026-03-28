@@ -2,7 +2,7 @@
 
 ## Current phase
 
-Phase 1: Foundation and core records
+Phase 5: Treasurer operations, hardening, and handover
 
 ## Goal
 
@@ -20,11 +20,15 @@ Build a maintainable web app for lodge treasury administration that can later be
 ### Phase 1: Foundation
 
 - Flask app structure
-- PostgreSQL database on the DEN PC
 - Local launcher
+- SQLite local default
+- PostgreSQL support
 - Seed data
 - Dashboard shell
 - Documentation and specs
+
+Status:
+- Completed
 
 ### Phase 2: Authentication and roles
 
@@ -32,6 +36,9 @@ Build a maintainable web app for lodge treasury administration that can later be
 - Session management
 - Treasurer and secretary roles
 - Protected admin routes
+
+Status:
+- Completed
 
 ### Phase 3: Members and dues
 
@@ -41,6 +48,9 @@ Build a maintainable web app for lodge treasury administration that can later be
 - Dues entry and editing forms
 - CSV export for members and dues
 
+Status:
+- Core slice delivered
+
 ### Phase 4: Events and meal booking
 
 - Event creation
@@ -48,12 +58,22 @@ Build a maintainable web app for lodge treasury administration that can later be
 - Dietary notes
 - Booking summary for the secretary or dining lead
 
+Status:
+- Partially delivered
+
 ### Phase 5: Treasurer operations
 
-- Transaction logging
-- Reporting screens
+- Bank transaction import
+- Bank category assignment
+- Cash entry by meeting
+- Cash settlement into bank
+- Balance sheet reporting
+- Workbook import support
 - Reconciliation support
 - Backup and handover tools
+
+Status:
+- In progress
 
 ### Phase 6: Member services
 
@@ -62,6 +82,9 @@ Build a maintainable web app for lodge treasury administration that can later be
 - Book meals
 - Submit queries or updates
 
+Status:
+- Not started
+
 ### Phase 7: Payments and notifications
 
 - Online payment integration
@@ -69,6 +92,11 @@ Build a maintainable web app for lodge treasury administration that can later be
 - Payment confirmations
 - Due-date reminders
 
+Status:
+- Not started
+
 ## Immediate next slice
 
-Build the members-and-dues screens on top of the revised data model, then add authentication around those admin routes.
+- Continue improving inline-save UX across operational pages
+- Build out reconciliation checks and exception handling
+- Complete DNS, reverse proxy, and HTTPS for `app.5217.org.uk`

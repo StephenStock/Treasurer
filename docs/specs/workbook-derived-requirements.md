@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft
+Living reference
 
 ## Purpose
 
@@ -191,6 +191,7 @@ Required categorisation capabilities:
 Requirements:
 
 - Import or enter bank transactions
+- Support workbook-derived import and statement-file upload import
 - Allocate a transaction across one or more categories
 - Support inbound and outbound transactions
 - Keep cross-check totals
@@ -292,7 +293,7 @@ Requirements:
 ### Security
 
 - Treasurer and secretary areas should require login
-- Member-facing access should be limited to each member’s own information
+- Member-facing access should be limited to each member's own information
 - Sensitive financial screens should not be public
 
 ## Proposed application modules
@@ -349,6 +350,14 @@ These points are inferred from the workbook and should be confirmed before imple
 - Whether `LOI`, `Chapter LOI`, `Relief`, `Widows`, and `Donations` need separate reporting treatment
 - Whether the statement should be printable in a formal year-end format
 
-## Recommended next spec
+## Implementation notes
 
-Create a follow-on spec for `Members and dues`, because those rules drive most of the rest of the workbook.
+Parts of this requirements set are now live in the app, including:
+
+- internal-user authentication
+- members and dues records
+- bank import and categorisation
+- cash entry by meeting
+- linked cash-to-bank settlement flow
+
+This document should stay focused on workbook intent and business rules. Delivery status should be tracked in the roadmap and the runbook.
