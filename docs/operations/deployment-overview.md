@@ -31,6 +31,8 @@ This note records the current public website, the planned application hosting, a
 - A deploy script can then update the Lightsail app server and restart the service
 - The app should run under `systemd` with `gunicorn` instead of the Flask development server
 - No CI/CD pipeline complexity is needed beyond that basic push-to-deploy flow
+- Local development on Windows should use the SQLite file created by `start.bat`
+- `deploy.bat` on Windows should SSH into Lightsail and run the server deploy script
 
 ## Notes
 

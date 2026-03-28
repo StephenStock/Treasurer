@@ -3,7 +3,7 @@ cd /d "%~dp0"
 
 if "%LOCALAPPDATA%"=="" set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
 set "APP_DATA=%LOCALAPPDATA%\Treasurer"
-if "%TREASURER_DATABASE_URL%"=="" set "TREASURER_DATABASE_URL=postgresql://treasurer:lodge@192.168.1.201:5432/treasurer"
+if "%TREASURER_DATABASE_URL%"=="" set "TREASURER_DATABASE_URL=%APP_DATA%\Lodge.db"
 set "TEMP=%APP_DATA%\tmp"
 set "TMP=%TEMP%"
 
