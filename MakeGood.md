@@ -4,7 +4,7 @@ Use this as the handoff note when I go to the Den PC.
 
 ## Goal
 
-Make the Den PC match this machine for running the Treasurer app, so I can later install PostgreSQL there and use it as the temporary shared database host.
+Make the Den PC match this machine for running the 5217 app, so I can later install PostgreSQL there and use it as the temporary shared database host.
 
 ## Current reference machine
 
@@ -47,7 +47,7 @@ Make the Den PC match this machine for running the Treasurer app, so I can later
 
 - Running `start.bat` should install dependencies with the correct Python.
 - The live SQLite database will be created in:
-  - `%LOCALAPPDATA%\Treasurer\Lodge.db`
+  - `%LOCALAPPDATA%\5217\Lodge.db`
 - If `TREASURER_DATABASE` is set, that path wins instead.
 
 ## If Codex is used on the Den PC

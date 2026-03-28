@@ -4,7 +4,7 @@ setlocal
 set "DEPLOY_HOST=18.130.77.196"
 set "DEPLOY_USER=ubuntu"
 set "DEPLOY_KEY=%USERPROFILE%\.ssh\lodge-app.pem"
-set "REMOTE_CMD=if [ -d ~/5217/.git ]; then cd ~/5217; elif [ -d ~/Treasurer/.git ]; then mv ~/Treasurer ~/5217 && cd ~/5217; else git clone https://github.com/StephenStock/5217.git ~/5217 && cd ~/5217; fi && bash deploy/deploy.sh"
+set "REMOTE_CMD=if [ -d ~/5217/.git ]; then cd ~/5217; else git clone https://github.com/StephenStock/5217.git ~/5217 && cd ~/5217; fi && git remote set-url origin https://github.com/StephenStock/5217.git && git fetch origin main && git reset --hard origin/main && bash deploy/deploy.sh"
 
 echo Starting deploy to %DEPLOY_USER%@%DEPLOY_HOST%...
 

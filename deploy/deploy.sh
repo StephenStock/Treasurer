@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${APP_DIR:-$SCRIPT_DIR/..}"
-SERVICE_NAME="${SERVICE_NAME:-treasurer}"
+SERVICE_NAME="${SERVICE_NAME:-5217}"
 PYTHON_BIN="${PYTHON_BIN:-$APP_DIR/.venv/bin/python}"
 PIP_BIN="${PIP_BIN:-$APP_DIR/.venv/bin/pip}"
 
@@ -50,16 +50,11 @@ if [[ -f /etc/5217/5217.env ]]; then
   set -a
   source /etc/5217/5217.env
   set +a
-elif [[ -f /etc/treasurer/treasurer.env ]]; then
-  # shellcheck disable=SC1091
-  set -a
-  source /etc/treasurer/treasurer.env
-  set +a
 fi
 
 if [[ -z "${TREASURER_DATABASE_URL:-}" ]]; then
   echo "TREASURER_DATABASE_URL is not set." >&2
-  echo "Expected /etc/5217/5217.env or /etc/treasurer/treasurer.env to define it." >&2
+  echo "Expected /etc/5217/5217.env to define it." >&2
   exit 1
 fi
 
@@ -74,7 +69,9 @@ else
 fi
 
 echo "Installing systemd service..."
-sudo install -m 0644 deploy/treasurer.service /etc/systemd/system/treasurer.service
+sudo install -m 0644 deploy/5217.service /etc/systemd/system/5217.service
+sudo systemctl stop treasurer.service >/dev/null 2>&1 || true
+sudo systemctl disable treasurer.service >/dev/null 2>&1 || true
 sudo systemctl daemon-reload
 
 echo "Restarting service..."
