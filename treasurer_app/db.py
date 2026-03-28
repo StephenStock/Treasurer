@@ -16,6 +16,7 @@ from werkzeug.security import generate_password_hash
 
 
 WORKBOOK_BANK_SHEET = "Bank"
+WORKBOOK_CASH_SHEET = "Cash"
 WORKBOOK_CANDIDATES = (
     "Accounts 2025-26.xlsx",
     "LodgeAccounts_Template.xlsx",
@@ -52,10 +53,14 @@ BANK_CATEGORY_DEFINITIONS = [
     ("SUMUP", "SumUp", "in", 80),
     ("GAVEL", "Gavel", "in", 90),
     ("DONATIONS_IN", "Donations", "in", 100),
+    ("RAFFLE", "Raffle", "in", 105),
+    ("COPPER_POT", "Copper Pot", "in", 107),
     ("CHAPTER_LOI", "Chapter LOI", "in", 110),
     ("LOI", "LOI", "in", 120),
+    ("ALMONER", "Almoner", "out", 135),
     ("RELIEF", "Relief", "out", 130),
     ("DONATIONS_OUT", "Donations", "out", 140),
+    ("TYLER", "Tyler", "out", 145),
     ("UGLE", "UGLE", "out", 150),
     ("PGLE", "PGLE", "out", 160),
     ("ORSETT", "Orsett", "out", 170),
@@ -80,7 +85,7 @@ VIRTUAL_ACCOUNT_DEFINITIONS = [
 ]
 
 VIRTUAL_ACCOUNT_CATEGORY_MAP = {
-    "MAIN": ["CASH", "INITIATION", "SUMUP", "BANK_CHARGES"],
+    "MAIN": ["CASH", "INITIATION", "SUMUP", "BANK_CHARGES", "RAFFLE", "COPPER_POT", "TYLER"],
     "CHARITY": ["DONATIONS_IN", "DONATIONS_OUT"],
     "GLASGOW": ["UGLE", "PGLE"],
     "FRANK": ["ORSETT", "WOOLMKT"],
@@ -89,9 +94,22 @@ VIRTUAL_ACCOUNT_CATEGORY_MAP = {
     "DINING": ["DINING", "VISITOR", "CATERER"],
     "PRE_SUBS": ["PRE_SUBS"],
     "PRE_DINING": ["PRE_DINING"],
-    "BENEVOLENT": ["RELIEF", "WIDOWS"],
+    "BENEVOLENT": ["RELIEF", "WIDOWS", "ALMONER"],
     "CENTENARY": ["GAVEL"],
 }
+
+CASH_COLUMN_CATEGORY_CODES = {
+    "C": "SUBS",
+    "D": "DINING",
+    "E": "GAVEL",
+    "F": "RAFFLE",
+    "G": "COPPER_POT",
+    "I": "DONATIONS_IN",
+    "J": "ALMONER",
+    "K": "TYLER",
+}
+
+CASH_OUT_COLUMNS = {"J", "K"}
 
 BANK_COLUMN_CATEGORY_CODES = {
     "L": "CASH",
@@ -1177,6 +1195,102 @@ def import_bank_transactions_from_workbook(
     return imported
 
 
+def import_cash_entries_from_workbook(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    workbook_path: Path,
+    *,
+    replace: bool = True,
+) -> int:
+    rows = _read_sheet_rows(workbook_path, WORKBOOK_CASH_SHEET)
+    if not rows:
+        return 0
+
+    if replace:
+        db.execute("DELETE FROM cashbook_entries WHERE reporting_period_id = ?", (reporting_period_id,))
+        db.execute("DELETE FROM cash_settlements WHERE reporting_period_id = ?", (reporting_period_id,))
+
+    category_ids = _category_id_map(db)
+    meeting_rows = db.execute(
+        """
+        SELECT meeting_key
+        FROM meetings
+        WHERE reporting_period_id = ?
+        ORDER BY sort_order, meeting_key
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+    meeting_keys = [row["meeting_key"] for row in meeting_rows]
+
+    imported = 0
+    meeting_index = -1
+    current_meeting_key: str | None = None
+
+    for row_number, row in rows:
+        row_label = row.get("A", "").strip()
+        row_name = row.get("B", "").strip()
+
+        if row_label == "TOTALS" or row_name == "TOTALS":
+            break
+
+        if row_label and row_label.upper().endswith("MEETING"):
+            meeting_index += 1
+            current_meeting_key = meeting_keys[meeting_index] if meeting_index < len(meeting_keys) else None
+            continue
+
+        if row_label == "Item" or row_name == "Name":
+            continue
+
+        if current_meeting_key is None:
+            continue
+
+        entry_type = row_label or "Collection"
+        entry_name = row_name or "Imported cash line"
+
+        for column, category_code in CASH_COLUMN_CATEGORY_CODES.items():
+            raw_amount = row.get(column)
+            amount = _to_amount(raw_amount)
+            if amount == 0:
+                continue
+
+            if column in CASH_OUT_COLUMNS:
+                money_in = 0.0
+                money_out = amount
+            else:
+                money_in = amount
+                money_out = 0.0
+
+            category_id = category_ids.get(category_code)
+            notes_parts = [f"Imported from {workbook_path.name} Cash!{column}{row_number}"]
+            notes_parts.append(f"Workbook label: {entry_type} / {entry_name}")
+            if raw_amount is not None and str(raw_amount).strip().startswith("-"):
+                notes_parts.append("Negative correction in workbook")
+
+            db.execute(
+                """
+                INSERT INTO cashbook_entries (
+                    reporting_period_id, meeting_key, entry_type, entry_name,
+                    member_id, ledger_category_id, money_in, money_out, notes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    reporting_period_id,
+                    current_meeting_key,
+                    entry_type,
+                    entry_name,
+                    None,
+                    category_id,
+                    money_in,
+                    money_out,
+                    "; ".join(notes_parts),
+                ),
+            )
+            imported += 1
+
+    return imported
+
+
 def replace_bank_transaction_allocations(
     db: sqlite3.Connection,
     bank_transaction_id: int,
@@ -1890,3 +2004,15 @@ def init_app(app) -> None:
             f"{totals['inserted']} new and updated {totals['updated']} bank statement rows "
             f"from {totals['files']} CSV file(s)."
         )
+
+    @app.cli.command("import-cashbook")
+    def import_cashbook_command() -> None:
+        db = get_db()
+        reporting_period_id = 1
+        workbook_path = _find_existing_workbook()
+        if workbook_path is None:
+            raise RuntimeError("No workbook was found to import cash rows from.")
+
+        imported = import_cash_entries_from_workbook(db, reporting_period_id, workbook_path, replace=True)
+        db.commit()
+        print(f"Imported {imported} cash entries from the workbook.")
