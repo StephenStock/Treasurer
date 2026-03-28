@@ -39,6 +39,7 @@ This spec does not yet cover:
 - A member has both a membership status and a member type
 - Member type influences expected subscription and dining treatment
 - Subscription and dining balances must both be visible
+- Dining balances should include the caterer outflows that relate to lodge meals
 - One member may make one payment that covers several purposes
 - A reporting year needs to be explicit, not implied
 - Exceptional cases such as resignation, write-off, or exclusion must be recordable
