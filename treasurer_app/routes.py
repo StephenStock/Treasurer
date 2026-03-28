@@ -787,6 +787,16 @@ def help_page():
     )
 
 
+@main_bp.route("/forms")
+def forms():
+    return render_template(
+        "placeholder.html",
+        active_page="forms",
+        title="Public Forms",
+        intro="This will become the public-facing forms area for lodge requests and member workflows.",
+    )
+
+
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     db = get_db()

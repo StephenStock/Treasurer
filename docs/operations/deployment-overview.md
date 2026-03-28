@@ -34,6 +34,7 @@ This note records the current public website, the planned application hosting, a
 - Local development on Windows should use the SQLite file created by `start.bat`
 - `deploy.bat` on Windows should SSH into Lightsail and run the server deploy script
 - The next public step is DNS and HTTPS for `app.5217.org.uk`
+- nginx should proxy `app.5217.org.uk` on port 80 to the Flask service on `127.0.0.1:5000`
 
 ## Notes
 
