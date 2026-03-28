@@ -47,8 +47,8 @@
             <th>Date</th>
             <th>Details</th>
             <th>Category</th>
-            <th>Direction</th>
-            <th>Amount</th>
+            <th>In</th>
+            <th>Out</th>
           </tr>
         </thead>
         <tbody>
@@ -57,13 +57,13 @@
               <td>{{ entry.transaction_date or "-" }}</td>
               <td>{{ entry.details }}</td>
               <td>{{ entry.category_name }}</td>
-              <td>{{ entry.direction }}</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(entry.amount) }}</td>
+              <td class="money-cell">{% if entry.direction == 'in' %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
+              <td class="money-cell">{% if entry.direction == 'out' %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
             </tr>
           {% endfor %}
           {% if not selected_account.entries %}
             <tr>
-              <td colspan="5" class="muted-text">No transactions are currently mapped to this account.</td>
+              <td colspan="6" class="muted-text">No transactions are currently mapped to this account.</td>
             </tr>
           {% endif %}
         </tbody>
