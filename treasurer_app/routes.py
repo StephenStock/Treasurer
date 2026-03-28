@@ -5,6 +5,7 @@ from .db import (
     _find_existing_workbook,
     get_db,
     import_bank_statement_exports,
+    import_bank_statement_uploads,
     import_bank_transactions_from_workbook,
     replace_bank_transaction_allocations,
     seed_meeting_schedule,
@@ -501,8 +502,15 @@ def bank():
 def bank_import():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
-    totals = import_bank_statement_exports(db, reporting_period_id=reporting_period_id)
-    if totals["files"] == 0:
+    uploaded_files = request.files.getlist("statement_files")
+    has_uploads = any(uploaded_file and uploaded_file.filename for uploaded_file in uploaded_files)
+
+    if has_uploads:
+        totals = import_bank_statement_uploads(db, reporting_period_id, uploaded_files)
+    else:
+        totals = import_bank_statement_exports(db, reporting_period_id=reporting_period_id)
+
+    if totals["files"] == 0 and not has_uploads:
         workbook_path = _find_existing_workbook()
         if workbook_path is not None:
             imported = import_bank_transactions_from_workbook(db, reporting_period_id, workbook_path)
@@ -515,8 +523,9 @@ def bank_import():
 
     db.commit()
     if totals["inserted"] or totals["updated"]:
+        source_label = "uploaded file(s)" if has_uploads else "CSV file(s)"
         flash(
-            f"Imported {totals['inserted']} new and updated {totals['updated']} bank statement rows from {totals['files']} CSV file(s).",
+            f"Imported {totals['inserted']} new and updated {totals['updated']} bank statement rows from {totals['files']} {source_label}.",
             "success",
         )
     else:

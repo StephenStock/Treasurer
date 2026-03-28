@@ -9,10 +9,18 @@
       <h2>Import statement lines and assign each row to the same income and expense categories used in the workbook.</h2>
     </div>
     <div class="hero-note hero-actions">
-      <form method="post" action="{{ url_for('main.bank_import') }}">
+      <form method="post" action="{{ url_for('main.bank_import') }}" enctype="multipart/form-data">
+        <label class="sr-only" for="statement-files">Statement files</label>
+        <input
+          id="statement-files"
+          name="statement_files"
+          type="file"
+          multiple
+          accept=".csv,text/csv"
+        >
         <button class="button button-primary" type="submit">Import Statement CSVs</button>
       </form>
-      <p>The import refreshes the downloaded statement files, updating only statement columns and leaving notes or category allocations untouched.</p>
+      <p>The import can use one or more CSV files from your computer, or fall back to the downloaded statement files if you leave the picker empty. It updates only statement columns and leaves notes or category allocations untouched.</p>
       {% if bank_summary.uncategorised_transactions %}
         <p class="attention-banner">
           {{ bank_summary.uncategorised_transactions }} uncategorised row{{ 's' if bank_summary.uncategorised_transactions != 1 else '' }} need attention.

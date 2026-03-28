@@ -1,5 +1,6 @@
 import csv
 import difflib
+import io
 import os
 import re
 import sqlite3
@@ -497,52 +498,91 @@ def _import_bank_statement_csv(
     reporting_period_id: int,
     csv_path: Path,
 ) -> dict[str, int]:
+    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return _import_bank_statement_csv_handle(db, reporting_period_id, handle, csv_path.name)
+
+
+def _import_bank_statement_csv_handle(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    handle,
+    source_workbook: str,
+) -> dict[str, int]:
     inserted = 0
     updated = 0
 
-    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row_number, row in enumerate(reader, start=2):
-            if not row:
-                continue
+    reader = csv.DictReader(handle)
+    for row_number, row in enumerate(reader, start=2):
+        if not row:
+            continue
 
-            transaction_date = _parse_statement_date(row.get("Date"))
-            details = (row.get("Details") or "").strip()
-            transaction_type = (row.get("Transaction Type") or "").strip() or None
-            money_in = _parse_statement_amount(row.get("In"))
-            money_out = _parse_statement_amount(row.get("Out"))
-            running_balance = _parse_statement_amount(row.get("Balance"))
+        transaction_date = _parse_statement_date(row.get("Date"))
+        details = (row.get("Details") or "").strip()
+        transaction_type = (row.get("Transaction Type") or "").strip() or None
+        money_in = _parse_statement_amount(row.get("In"))
+        money_out = _parse_statement_amount(row.get("Out"))
+        running_balance = _parse_statement_amount(row.get("Balance"))
 
-            if (
-                not transaction_date
-                and not details
-                and transaction_type is None
-                and money_in == 0
-                and money_out == 0
-                and running_balance == 0
-            ):
-                continue
+        if (
+            not transaction_date
+            and not details
+            and transaction_type is None
+            and money_in == 0
+            and money_out == 0
+            and running_balance == 0
+        ):
+            continue
 
-            action = _upsert_bank_transaction(
-                db,
-                reporting_period_id,
-                source_workbook=csv_path.name,
-                source_sheet="CSV",
-                source_row_number=row_number,
-                transaction_date=transaction_date,
-                details=details or "Imported statement row",
-                transaction_type=transaction_type,
-                money_in=money_in,
-                money_out=money_out,
-                running_balance=running_balance,
-            )
+        action = _upsert_bank_transaction(
+            db,
+            reporting_period_id,
+            source_workbook=source_workbook,
+            source_sheet="CSV",
+            source_row_number=row_number,
+            transaction_date=transaction_date,
+            details=details or "Imported statement row",
+            transaction_type=transaction_type,
+            money_in=money_in,
+            money_out=money_out,
+            running_balance=running_balance,
+        )
 
-            if action == "inserted":
-                inserted += 1
-            else:
-                updated += 1
+        if action == "inserted":
+            inserted += 1
+        else:
+            updated += 1
 
     return {"inserted": inserted, "updated": updated}
+
+
+def import_bank_statement_uploads(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    uploaded_files,
+) -> dict[str, int]:
+    totals = {"files": 0, "inserted": 0, "updated": 0}
+
+    for uploaded_file in uploaded_files:
+        if uploaded_file is None or not getattr(uploaded_file, "filename", ""):
+            continue
+
+        raw_bytes = uploaded_file.read()
+        if not raw_bytes:
+            continue
+
+        with io.StringIO(raw_bytes.decode("utf-8-sig")) as handle:
+            file_totals = _import_bank_statement_csv_handle(
+                db,
+                reporting_period_id,
+                handle,
+                uploaded_file.filename,
+            )
+
+        totals["files"] += 1
+        totals["inserted"] += file_totals["inserted"]
+        totals["updated"] += file_totals["updated"]
+
+    return totals
 
 
 def import_bank_statement_exports(
