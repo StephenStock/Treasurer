@@ -33,6 +33,7 @@ This note records the current public website, the planned application hosting, a
 - No CI/CD pipeline complexity is needed beyond that basic push-to-deploy flow
 - Local development on Windows should use the SQLite file created by `start.bat`
 - `deploy.bat` on Windows should SSH into Lightsail and run the server deploy script
+- The next public step is DNS and HTTPS for `app.5217.org.uk`
 
 ## Notes
 
@@ -41,3 +42,4 @@ This note records the current public website, the planned application hosting, a
 - Document any final DNS choices here once the subdomain is confirmed
 - While public mode is disabled, only Lightsail resources in the same region can connect to the database
 - See `docs/operations/lightsail-deploy.md` for the current server-side deploy plan
+- See `docs/operations/subdomain-https-plan.md` for the public DNS and HTTPS sequence
