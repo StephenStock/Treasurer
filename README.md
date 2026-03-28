@@ -1,13 +1,14 @@
 # 5217 Portal
 
-Starter web app for Lodge and Chapter operations using Flask, PostgreSQL in production, and vanilla JavaScript.
+Web app for lodge and chapter operations using Flask, vanilla JavaScript, SQLite for local development, and PostgreSQL in production.
 
-## What is included
+## What this repo contains
 
-- Flask application factory
-- Local SQLite for development, PostgreSQL on Lightsail for production
-- Server-rendered dashboard for members, dues, bookings, and messages
-- `start.bat` launcher for local development
+- Server-rendered admin app for members, dues, bookings, bank, cash, and reporting
+- Local Windows launch flow via `start.bat`
+- Production deploy flow via `deploy.bat`
+- SQLite locally and PostgreSQL in production
+- Project documentation under `docs/`
 
 ## Quick start
 
@@ -35,25 +36,32 @@ If you need to point the app somewhere else, set `TREASURER_DATABASE_URL` before
 - Username: `lodgeadmin`, `treasurer`, `secretary`, or `helper`
 - Password: `changeme`
 
-The app now enforces login for the admin pages. These seeded accounts are meant as the starting point for the four internal users we discussed, and you can change the passwords later as part of handover.
+The admin pages require login. These seeded accounts are only the starting point and should be changed as part of real setup.
 
-## Suggested next steps
+## Documentation map
 
-- Add forms for members, dues, and events
-- Build CSV export/import for handover and reporting
-- Add payment workflow once the core record-keeping is solid
+- [`docs/Runbook.md`](docs/Runbook.md): live environment, deploy flow, database, imports, and operations
+- [`docs/roadmap.md`](docs/roadmap.md): product direction and current delivery phase
+- [`docs/specs/`](docs/specs/): feature and business-rule documents
+- [`docs/working-agreement.md`](docs/working-agreement.md): implementation workflow for the project
 
-## Project planning
+## Current product shape
 
-The project now includes a lightweight spec-driven docs structure:
+- Internal users:
+  - Treasurer
+  - Secretary
+  - Admin/helper users
+- Current operational areas:
+  - Members and dues
+  - Events and bookings
+  - Bank ledger and categorisation
+  - Cash entry and settlement
+  - Reporting and balances
+- Public access:
+  - `/forms` remains the intended public-facing route area
 
-- `docs/roadmap.md`
-- `docs/working-agreement.md`
-- `docs/specs/`
-- `docs/sessions/`
+## Production summary
 
-This is intended to keep development in small, low-surprise slices.
-
-Workbook analysis has also been captured in:
-
-- `docs/specs/workbook-derived-requirements.md`
+- Production app host target: `app.5217.org.uk`
+- Production runtime: Lightsail + `systemd` + `gunicorn`
+- Canonical operational reference: [`docs/Runbook.md`](docs/Runbook.md)
