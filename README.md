@@ -32,14 +32,13 @@ If you need to point the app somewhere else, set `TREASURER_DATABASE_URL` before
 
 ## Default seeded account
 
-- Username: `treasurer`
+- Username: `lodgeadmin`, `treasurer`, `secretary`, or `helper`
 - Password: `changeme`
 
-This starter does not yet enforce authentication. The default account is seeded so we can add login next.
+The app now enforces login for the admin pages. These seeded accounts are meant as the starting point for the four internal users we discussed, and you can change the passwords later as part of handover.
 
 ## Suggested next steps
 
-- Add authentication and roles
 - Add forms for members, dues, and events
 - Build CSV export/import for handover and reporting
 - Add payment workflow once the core record-keeping is solid

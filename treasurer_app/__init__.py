@@ -9,6 +9,7 @@ from .db import (
     ensure_financial_tables,
     get_db,
     init_app,
+    seed_auth_users,
     seed_ledger_categories,
     seed_meeting_schedule,
     seed_virtual_account_balances,
@@ -17,6 +18,7 @@ from .db import (
     _is_postgres_dsn,
     table_exists,
 )
+from .auth import auth_bp
 from .routes import main_bp
 
 
@@ -43,11 +45,13 @@ def create_app(test_config: dict | None = None) -> Flask:
         ensure_database_parent_path(Path(app.config["DATABASE"]))
     init_app(app)
     app.teardown_appcontext(close_db)
+    app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
 
     with app.app_context():
         db = get_db()
         if table_exists(db, "users"):
+            seed_auth_users(db)
             ensure_financial_tables(db)
             seed_ledger_categories(db)
             seed_virtual_accounts(db)

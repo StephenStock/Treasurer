@@ -115,6 +115,13 @@ BANK_COLUMN_CATEGORY_CODES = {
     "AH": "WIDOWS",
 }
 
+AUTH_USER_DEFINITIONS = [
+    ("lodgeadmin", "Lodge Admin", "changeme", "lodge_admin"),
+    ("treasurer", "Lodge Treasurer", "changeme", "treasurer"),
+    ("secretary", "Lodge Secretary", "changeme", "secretary"),
+    ("helper", "Lodge Helper", "changeme", "helper"),
+]
+
 _MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 _REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 _PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -1349,13 +1356,7 @@ def init_db() -> None:
     schema_path = Path(__file__).with_name("schema.sql")
     db.executescript(schema_path.read_text(encoding="utf-8"))
 
-    db.execute(
-        """
-        INSERT INTO users (username, full_name, password_hash, role)
-        VALUES (?, ?, ?, ?)
-        """,
-        ("treasurer", "Lodge Treasurer", generate_password_hash("changeme"), "treasurer"),
-    )
+    seed_auth_users(db)
 
     db.execute(
         """
@@ -1598,6 +1599,20 @@ def init_db() -> None:
     seed_bank_ledger(db, reporting_period_id=1)
 
     db.commit()
+
+
+def seed_auth_users(db: DatabaseHandle) -> None:
+    db.executemany(
+        """
+        INSERT INTO users (username, full_name, password_hash, role)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(username) DO NOTHING
+        """,
+        [
+            (username, full_name, generate_password_hash(password), role)
+            for username, full_name, password, role in AUTH_USER_DEFINITIONS
+        ],
+    )
 
 
 def init_app(app) -> None:

@@ -51,6 +51,12 @@ body {
   margin-bottom: 1rem;
 }
 
+.header-meta {
+  display: grid;
+  justify-items: end;
+  gap: 0.5rem;
+}
+
 .site-header h1,
 .hero-card h2,
 .panel h3,
@@ -87,6 +93,26 @@ button,
   max-width: 34rem;
   color: var(--muted);
   text-align: right;
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 250, 241, 0.82);
+  border: 1px solid rgba(127, 29, 29, 0.12);
+  color: var(--muted);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.user-chip a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
 }
 
 .top-nav {
@@ -209,6 +235,24 @@ button,
   padding: 1rem;
   border-radius: 18px;
   background: var(--accent-soft);
+}
+
+.login-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 28rem;
+}
+
+.login-form label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 0.95rem;
+}
+
+.login-form input {
+  width: 100%;
 }
 
 .attention-banner {
