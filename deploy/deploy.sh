@@ -34,7 +34,14 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
 fi
 
 echo "Installing Python dependencies..."
-"$PIP_BIN" install --quiet -r requirements.txt
+PIP_LOG="$(mktemp)"
+if ! "$PIP_BIN" install -q --disable-pip-version-check -r requirements.txt >"$PIP_LOG" 2>&1; then
+  echo "Dependency installation failed."
+  cat "$PIP_LOG"
+  rm -f "$PIP_LOG"
+  exit 1
+fi
+rm -f "$PIP_LOG"
 
 if [[ -f /etc/treasurer/treasurer.env ]]; then
   # shellcheck disable=SC1091
