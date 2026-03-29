@@ -8,6 +8,7 @@ Local-first treasurer aid built with Flask, vanilla JavaScript, and SQLite.
 - Local Windows launch flow via `start.bat`
 - SQLite locally by default
 - Project documentation under `docs/`
+- Recommended repo location: `C:\Code\Treasurer`
 
 ## Quick start
 
@@ -24,7 +25,7 @@ This will:
 3. Create the local SQLite database on first run
 4. Start the development server at `http://127.0.0.1:5000`
 
-The app uses `TREASURER_DATABASE` to decide where the SQLite file lives. `start.bat` defaults to `instance\Treasurer.db` inside the project folder, which is the normal operating model.
+The app uses `TREASURER_DATABASE` to decide where the live SQLite file lives. `start.bat` defaults to `C:\TreasurerDB\Treasurer.db` for the live database and keeps a mirrored backup copy in a OneDrive backup folder, with a local fallback if OneDrive is unavailable.
 
 If you want the database somewhere else, set `TREASURER_DATABASE` before launching it.
 

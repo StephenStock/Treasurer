@@ -39,8 +39,10 @@ This spec does not cover:
 
 - App uses Flask with an application factory
 - App uses SQLite for its local database
-- Local default storage is `instance\\Treasurer.db` inside the project folder
+- Local live storage is `C:\\TreasurerDB\\Treasurer.db`
+- Mirrored backup storage defaults to a OneDrive backup folder selected automatically at startup
 - The database file can be overridden with `TREASURER_DATABASE`
+- The mirrored backup can be overridden with `TREASURER_BACKUP_DATABASE`
 - Seed data includes members, dues, events, bookings, and messages
 - UI is server-rendered with vanilla JavaScript for light interactivity
 

@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import csv
 import difflib
 import io
 import os
 import re
+import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 import zipfile
@@ -157,11 +160,82 @@ def default_database_path() -> Path:
     if configured:
         return Path(configured)
 
-    return _project_root() / "instance" / "Treasurer.db"
+    return Path("C:/TreasurerDB/Treasurer.db")
+
+
+def default_backup_database_path() -> Path:
+    configured = os.environ.get("TREASURER_BACKUP_DATABASE")
+    if configured:
+        return Path(configured)
+
+    for env_name in ("OneDriveCommercial", "OneDriveConsumer", "OneDrive"):
+        one_drive_root = os.environ.get(env_name)
+        if one_drive_root:
+            return Path(one_drive_root) / "TreasurerBackups" / "Treasurer.backup.db"
+
+    return Path("C:/TreasurerBackups/Treasurer.backup.db")
 
 
 def ensure_database_parent_path(database_path: Path) -> None:
     database_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _atomic_copy_file(source_path: Path, destination_path: Path) -> None:
+    ensure_database_parent_path(destination_path)
+    temp_path = destination_path.with_name(f"{destination_path.name}.tmp")
+    if temp_path.exists():
+        temp_path.unlink()
+    shutil.copy2(source_path, temp_path)
+    os.replace(temp_path, destination_path)
+
+
+def sync_database_files(primary_path: Path, backup_path: Path) -> None:
+    if primary_path.resolve() == backup_path.resolve():
+        return
+
+    primary_exists = primary_path.exists()
+    backup_exists = backup_path.exists()
+
+    if primary_exists and not backup_exists:
+        _atomic_copy_file(primary_path, backup_path)
+        return
+
+    if backup_exists and not primary_exists:
+        _atomic_copy_file(backup_path, primary_path)
+        return
+
+    if not primary_exists or not backup_exists:
+        return
+
+    primary_stat = primary_path.stat()
+    backup_stat = backup_path.stat()
+    primary_stamp = (primary_stat.st_mtime_ns, primary_stat.st_size)
+    backup_stamp = (backup_stat.st_mtime_ns, backup_stat.st_size)
+
+    if backup_stamp > primary_stamp:
+        _atomic_copy_file(backup_path, primary_path)
+    elif primary_stamp > backup_stamp:
+        _atomic_copy_file(primary_path, backup_path)
+
+
+def backup_database(db: DatabaseHandle, backup_path: Path) -> None:
+    if db.backend != "sqlite":
+        return
+
+    ensure_database_parent_path(backup_path)
+    temp_path = backup_path.with_name(f"{backup_path.name}.tmp")
+    if temp_path.exists():
+        temp_path.unlink()
+
+    db.commit()
+    destination = sqlite3.connect(temp_path)
+    try:
+        db.backup(destination)
+        destination.commit()
+    finally:
+        destination.close()
+
+    os.replace(temp_path, backup_path)
 
 
 def _schema_sql_for_sqlite(sql: str) -> str:

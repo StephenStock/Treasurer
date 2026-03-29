@@ -3,16 +3,20 @@ cd /d "%~dp0"
 
 if "%LOCALAPPDATA%"=="" set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
 set "APP_DATA=%LOCALAPPDATA%\Treasurer"
-set "INSTANCE_DIR=%~dp0instance"
-if "%TREASURER_DATABASE%"=="" set "TREASURER_DATABASE=%INSTANCE_DIR%\Treasurer.db"
+set "LOCAL_DB_DIR=C:\TreasurerDB"
+if "%TREASURER_DATABASE%"=="" set "TREASURER_DATABASE=%LOCAL_DB_DIR%\Treasurer.db"
 set "TEMP=%APP_DATA%\tmp"
 set "TMP=%TEMP%"
 
 if not exist "%APP_DATA%" mkdir "%APP_DATA%"
 if not exist "%TEMP%" mkdir "%TEMP%"
-if not exist "%INSTANCE_DIR%" mkdir "%INSTANCE_DIR%"
-
-if not exist "%TREASURER_DATABASE%" if exist "%APP_DATA%\Treasurer.db" copy /Y "%APP_DATA%\Treasurer.db" "%TREASURER_DATABASE%" >nul
+if not exist "%LOCAL_DB_DIR%" mkdir "%LOCAL_DB_DIR%"
+if not exist "%LOCAL_DB_DIR%" (
+    set "LOCAL_DB_DIR=%APP_DATA%\TreasurerDB"
+    set "TREASURER_DATABASE=%LOCAL_DB_DIR%\Treasurer.db"
+    if not exist "%LOCAL_DB_DIR%" mkdir "%LOCAL_DB_DIR%"
+    echo Using fallback local database folder.
+)
 
 for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = [Regex]::Escape((Get-Location).Path); Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(python|pythonw)\.exe$' -and $_.CommandLine -and $_.CommandLine -match $root -and ($_.CommandLine -match 'flask(\.exe)?\s+--app\s+app\s+run' -or $_.CommandLine -match 'app\.py') } | Select-Object -ExpandProperty ProcessId"`) do (
     taskkill /PID %%P /F >nul 2>nul
@@ -49,14 +53,31 @@ if not %errorlevel%==0 (
 )
 
 for /f "usebackq delims=" %%I in (`%PYTHON_CMD% -c "import sys; print(sys.executable)"`) do set "PYTHON_EXE=%%I"
+if "%TREASURER_BACKUP_DATABASE%"=="" (
+    for /f "usebackq delims=" %%B in (`%PYTHON_CMD% -c "from treasurer_app.db import default_backup_database_path; print(default_backup_database_path())"`) do set "TREASURER_BACKUP_DATABASE=%%B"
+)
 
-%PYTHON_CMD% -c "import os, sqlite3, sys; conn = sqlite3.connect(os.environ['TREASURER_DATABASE']); exists = conn.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='reporting_periods'\").fetchone(); sys.exit(0 if exists else 1)" >nul 2>nul
-if not %errorlevel%==0 (
+echo Live database: %TREASURER_DATABASE%
+echo Backup database: %TREASURER_BACKUP_DATABASE%
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode SyncStart
+
+if not exist "%TREASURER_DATABASE%" (
     %PYTHON_CMD% -m flask --app app init-db
     if errorlevel 1 (
         echo Failed to initialize the database.
         pause
         goto :eof
+    )
+) else (
+    %PYTHON_CMD% -c "import os, sqlite3, sys; conn = sqlite3.connect(os.environ['TREASURER_DATABASE']); exists = conn.execute(\"SELECT name FROM sqlite_master WHERE type='table' AND name='reporting_periods'\").fetchone(); sys.exit(0 if exists else 1)" >nul 2>nul
+    if not %errorlevel%==0 (
+        %PYTHON_CMD% -m flask --app app init-db
+        if errorlevel 1 (
+            echo Failed to initialize the database.
+            pause
+            goto :eof
+        )
     )
 )
 
@@ -66,4 +87,5 @@ echo.
 echo Treasurer is running.
 echo Press any key to stop it.
 pause >nul
-taskkill /PID %FLASK_PID% /T /F >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:5000/__shutdown' | Out-Null } catch {}; $deadline = (Get-Date).AddSeconds(15); while ((Get-Process -Id %FLASK_PID% -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }; if (Get-Process -Id %FLASK_PID% -ErrorAction SilentlyContinue) { taskkill /PID %FLASK_PID% /T /F >nul 2>nul }"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode Backup

@@ -1,10 +1,12 @@
 from datetime import date
+from pathlib import Path
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
 from .db import (
     _dues_status,
     _find_existing_workbook,
+    backup_database,
     cash_settlement_map,
     create_cash_settlement,
     get_db,
@@ -982,3 +984,20 @@ def settings():
         meeting_schedule=_meeting_schedule(),
         virtual_accounts=virtual_account_report(db),
     )
+
+
+@main_bp.post("/__shutdown")
+def shutdown_app():
+    db = get_db()
+    backup_path = current_app.config.get("BACKUP_DATABASE")
+    if backup_path:
+        try:
+            backup_database(db, Path(backup_path))
+        except Exception:
+            pass
+
+    shutdown = request.environ.get("werkzeug.server.shutdown")
+    if shutdown is None:
+        return "Shutdown unavailable.", 500
+    shutdown()
+    return "Shutting down."

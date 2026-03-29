@@ -16,10 +16,12 @@ The current preferred operating model is:
 ## Current system summary
 
 - Repo: `StephenStock/Treasurer`
+- Preferred repo location: `C:\Code\Treasurer`
 - App stack: Flask, server-rendered templates, light vanilla JavaScript
 - Preferred operating mode: local Windows app
 - Preferred database: local SQLite
-- Local database path: `instance\Treasurer.db` inside the project folder
+- Live database path: `C:\TreasurerDB\Treasurer.db`
+- Mirrored backup path: OneDrive backup folder selected automatically by `start.bat`, with a local fallback if OneDrive is unavailable
 - Local launch script: `start.bat`
 - Main docs: `README.md` and `docs/specs/`
 
@@ -59,26 +61,28 @@ Important local files:
 ### Local database expectations
 
 - SQLite is the normal and preferred storage engine
-- The active local database should live at `instance\Treasurer.db` inside the project folder unless deliberately overridden
+- The active live database should live at `C:\TreasurerDB\Treasurer.db` unless deliberately overridden
+- The mirrored backup should live in a OneDrive folder selected automatically by `start.bat`
 - The live database should not be stored inside OneDrive
 
 ### Database override
 
 - Set `TREASURER_DATABASE` if you want the SQLite file somewhere else
+- Set `TREASURER_BACKUP_DATABASE` if you want the mirrored backup somewhere else
 - The value should be a file path, not a server connection string
 
 ## Backups and restore
 
 ### Manual backup routine
 
-- Copy the SQLite database file to a safe backup location after important work
-- Keep a dated copy before major imports or schema changes
+- The launcher keeps a mirrored backup copy in sync automatically
+- Copy the SQLite database file to a safe dated backup location before major imports or schema changes
 - Treat the workbook export pack as a second continuity layer
 
 ### Restore path
 
 - Close the app
-- Replace the SQLite database file with the known-good backup
+- Replace the SQLite database file with the known-good backup, or let `start.bat` restore the newest mirrored copy
 - Start the app again with `start.bat`
 - Confirm the dashboard and bank/cash pages load correctly
 
