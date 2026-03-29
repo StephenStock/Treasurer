@@ -290,7 +290,7 @@ document.querySelectorAll('[data-fill-input]').forEach((button) => {
 
 document.querySelectorAll('[data-exit-app]').forEach((button) => {
   button.addEventListener('click', async () => {
-    const exitUrl = button.dataset.exitUrl;
+    const exitUrl = button.dataset.exitUrl || '/app/exit';
     const status = document.querySelector('[data-exit-message]');
     const exitButtons = document.querySelectorAll('[data-exit-app]');
 
