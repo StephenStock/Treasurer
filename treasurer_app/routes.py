@@ -1146,8 +1146,6 @@ def settings():
     return render_template(
         "settings.html",
         active_page="settings",
-        backup_folder_path=backup_folder_path,
-        suggested_backup_folder_path=suggested_backup_folder_path,
         **backup_status,
         meeting_schedule=_meeting_schedule(),
         virtual_accounts=virtual_account_report(db),
