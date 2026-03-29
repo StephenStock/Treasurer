@@ -23,6 +23,8 @@ The current preferred operating model is:
 - Live database path: `C:\TreasurerDB\Treasurer.db`
 - Mirrored backup folder: Documents folder selected automatically by `start.bat`, with OneDrive or the home folder used as fallback if needed
 - Mirrored backup folder can also be changed from the app's Settings page and is stored with the database
+- The home page shows a brief backup status line and an `Exit App` button
+- Detailed backup folder status, last backup time, and restore controls live in Settings
 - Local launch script: `start.bat`
 - Main docs: `README.md` and `docs/specs/`
 

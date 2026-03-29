@@ -289,6 +289,10 @@ button,
   margin-bottom: 1.5rem;
 }
 
+.dashboard-status-panel {
+  margin-bottom: 1.5rem;
+}
+
 .backup-status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -653,6 +657,10 @@ table {
   gap: 0.7rem;
 }
 
+.settings-backup-grid {
+  margin-bottom: 0.25rem;
+}
+
 .settings-helper-button {
   min-height: 2.2rem;
   padding: 0.45rem 0.8rem;
@@ -662,6 +670,10 @@ table {
 .settings-divider {
   height: 1px;
   background: rgba(127, 29, 29, 0.16);
+}
+
+.settings-backup-actions {
+  justify-content: flex-start;
 }
 
 .settings-table input[type="text"],

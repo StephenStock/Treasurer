@@ -287,3 +287,35 @@ document.querySelectorAll('[data-fill-input]').forEach((button) => {
     }
   });
 });
+
+document.querySelectorAll('[data-exit-app]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const exitUrl = button.dataset.exitUrl;
+    const status = document.querySelector('[data-exit-message]');
+
+    if (!exitUrl) {
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Stopping...';
+    if (status) {
+      status.textContent = 'Saving a final backup and stopping the app. You can close this tab when it finishes.';
+    }
+
+    void fetch(exitUrl, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      keepalive: true,
+    });
+
+    window.setTimeout(() => {
+      if (status) {
+        status.textContent = 'Treasurer should be stopped now. You can close this tab.';
+      }
+      window.close();
+    }, 1500);
+  });
+});

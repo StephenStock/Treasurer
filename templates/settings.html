@@ -18,7 +18,48 @@
       <div class="panel-heading">
         <div>
           <h3>Database Backup</h3>
-          <p class="section-note">Set the mirrored backup folder. The app will create it if needed and store <code>Treasurer.backup.db</code> inside it.</p>
+          <p class="section-note">{{ backup_selection_message }}</p>
+        </div>
+      </div>
+      <div class="backup-status-grid settings-backup-grid">
+        <div class="backup-status-card">
+          <span>Selected folder</span>
+          <strong>{{ backup_folder_path }}</strong>
+          <p class="section-note">
+            {% if backup_folder_selected %}
+              This folder was chosen in Settings.
+            {% else %}
+              This is the automatic fallback folder.
+            {% endif %}
+          </p>
+        </div>
+        <div class="backup-status-card">
+          <span>Backup file</span>
+          <strong>{{ backup_file_path }}</strong>
+          <p class="section-note">
+            {% if backup_file_exists %}
+              The mirrored file exists and can be restored from here.
+            {% else %}
+              No mirrored backup file has been created yet.
+            {% endif %}
+          </p>
+        </div>
+        <div class="backup-status-card">
+          <span>Last backup</span>
+          <strong>
+            {% if backup_last_backed_up %}
+              {{ backup_last_backed_up.strftime('%Y-%m-%d %H:%M') }}
+            {% else %}
+              No backup yet
+            {% endif %}
+          </strong>
+          <p class="section-note">
+            {% if backup_file_exists %}
+              Last mirrored backup timestamp from the backup file itself.
+            {% else %}
+              The restore action will become available after the first backup is created.
+            {% endif %}
+          </p>
         </div>
       </div>
       <div class="settings-single-field">
@@ -41,6 +82,22 @@
           </button>
           <span class="section-note">Suggested: {{ suggested_backup_folder_path }}</span>
         </div>
+      </div>
+
+      <div class="settings-divider"></div>
+
+      <div class="settings-actions settings-backup-actions">
+        <button
+          class="button button-primary"
+          type="submit"
+          formaction="{{ url_for('main.restore_backup') }}"
+          formmethod="post"
+          formnovalidate
+          onclick="return confirm('This will replace the local database with the mirrored backup. Continue?');"
+          {% if not backup_file_exists %}disabled{% endif %}
+        >
+          Restore local DB from backup
+        </button>
       </div>
 
       <div class="settings-divider"></div>

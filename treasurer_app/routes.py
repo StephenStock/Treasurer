@@ -431,12 +431,37 @@ def _backup_status_context():
     if backup_file_exists:
         last_backup_at = datetime.fromtimestamp(backup_path.stat().st_mtime)
 
+    if backup_folder_selected:
+        if backup_file_exists and last_backup_at is not None:
+            dashboard_summary = (
+                f"Backup folder selected at {backup_folder_path}. Last backup {last_backup_at.strftime('%Y-%m-%d %H:%M')}."
+            )
+        elif backup_file_exists:
+            dashboard_summary = f"Backup folder selected at {backup_folder_path}. Backup file is present."
+        else:
+            dashboard_summary = f"Backup folder selected at {backup_folder_path}. No backup file has been created yet."
+    else:
+        if backup_file_exists and last_backup_at is not None:
+            dashboard_summary = (
+                f"No backup folder selected yet. Using automatic backup location at {backup_folder_path}. "
+                f"Last backup {last_backup_at.strftime('%Y-%m-%d %H:%M')}."
+            )
+        elif backup_file_exists:
+            dashboard_summary = (
+                f"No backup folder selected yet. Using automatic backup location at {backup_folder_path}. Backup file is present."
+            )
+        else:
+            dashboard_summary = (
+                f"No backup folder selected yet. Using automatic backup location at {backup_folder_path}. No backup file has been created yet."
+            )
+
     return {
         "backup_folder_selected": backup_folder_selected,
         "backup_folder_path": backup_folder_path,
         "backup_file_path": backup_path,
         "backup_file_exists": backup_file_exists,
         "backup_last_backed_up": last_backup_at,
+        "backup_dashboard_summary": dashboard_summary,
         "backup_selection_message": (
             "No backup folder has been selected yet. The app is using the automatic backup location."
             if not backup_folder_selected
@@ -534,6 +559,28 @@ def dashboard():
         messages=messages,
         **backup_status,
     )
+
+
+@main_bp.post("/app/exit")
+def exit_app():
+    db = get_db()
+    backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(Path(current_app.config["DATABASE"])))
+
+    try:
+        backup_database(db, backup_path)
+    except Exception:
+        pass
+
+    try:
+        db.commit()
+    finally:
+        close_db()
+
+    shutdown = request.environ.get("werkzeug.server.shutdown")
+    if shutdown is not None:
+        shutdown()
+
+    return {"ok": True, "message": "Treasurer is stopping. You can close this tab now."}
 
 
 @main_bp.post("/backup/restore")
@@ -1010,6 +1057,7 @@ def forms():
 def settings():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
+    backup_status = _backup_status_context()
     suggested_backup_folder_path = str(resolve_backup_folder_path(Path(current_app.config["DATABASE"])))
     backup_folder_path = get_app_setting(db, APP_SETTING_BACKUP_FOLDER)
     if backup_folder_path is None:
@@ -1079,6 +1127,7 @@ def settings():
         active_page="settings",
         backup_folder_path=backup_folder_path,
         suggested_backup_folder_path=suggested_backup_folder_path,
+        **backup_status,
         meeting_schedule=_meeting_schedule(),
         virtual_accounts=virtual_account_report(db),
     )

@@ -14,71 +14,24 @@
     </div>
   </section>
 
-  <section class="panel backup-panel">
+  <section class="panel dashboard-status-panel">
     <div class="panel-heading">
       <div>
-        <h3>Backup Status</h3>
-        <p class="section-note">{{ backup_selection_message }}</p>
+        <h3>Backup and Exit</h3>
+        <p class="section-note">{{ backup_dashboard_summary }}</p>
       </div>
-      <form
-        method="post"
-        action="{{ url_for('main.restore_backup') }}"
-        class="backup-actions"
-        onsubmit="return confirm('This will replace the local database with the mirrored backup. Continue?');"
+      <button
+        type="button"
+        class="button button-primary"
+        data-exit-app
+        data-exit-url="{{ url_for('main.exit_app') }}"
       >
-        <button class="button button-primary" type="submit" {% if not backup_file_exists %}disabled{% endif %}>
-          Restore from backup
-        </button>
-      </form>
+        Exit App
+      </button>
     </div>
-
-    {% if backup_folder_selected %}
-      <p class="attention-banner attention-banner-ok">Backup folder selected in Settings.</p>
-    {% else %}
-      <p class="attention-banner">No backup folder has been selected yet. The app is using the automatic backup location.</p>
-    {% endif %}
-
-    <div class="backup-status-grid">
-      <div class="backup-status-card">
-        <span>Selected folder</span>
-        <strong>{{ backup_folder_path }}</strong>
-        <p class="section-note">
-          {% if backup_folder_selected %}
-            This folder was chosen in Settings.
-          {% else %}
-            This is the automatic fallback folder.
-          {% endif %}
-        </p>
-      </div>
-      <div class="backup-status-card">
-        <span>Backup file</span>
-        <strong>{{ backup_file_path }}</strong>
-        <p class="section-note">
-          {% if backup_file_exists %}
-            The mirrored file exists and can be restored from here.
-          {% else %}
-            No mirrored backup file has been created yet.
-          {% endif %}
-        </p>
-      </div>
-      <div class="backup-status-card">
-        <span>Last backup</span>
-        <strong>
-          {% if backup_last_backed_up %}
-            {{ backup_last_backed_up.strftime('%Y-%m-%d %H:%M') }}
-          {% else %}
-            No backup yet
-          {% endif %}
-        </strong>
-        <p class="section-note">
-          {% if backup_file_exists %}
-            Last mirrored backup timestamp from the backup file itself.
-          {% else %}
-            The restore action will become available after the first backup is created.
-          {% endif %}
-        </p>
-      </div>
-    </div>
+    <p class="attention-banner attention-banner-ok" data-exit-message>
+      Use Exit App when you are done. The app will run its final backup and stop the local server, then you can close this tab.
+    </p>
   </section>
 
   <section class="stats-grid">

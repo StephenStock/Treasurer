@@ -31,6 +31,8 @@ If you want the database somewhere else, set `TREASURER_DATABASE` before launchi
 
 You can also change the mirrored backup folder from the app's Settings page. The app will create the folder if it does not exist and store `Treasurer.backup.db` inside it. If you do not set one there, the launcher falls back to a default folder under your Documents area when possible, with OneDrive or the home folder used as backup fallbacks if needed.
 
+The home page shows a one-line backup status and an `Exit App` button. The detailed backup folder, last-backup timestamp, and restore controls live in Settings.
+
 `start.bat` prefers `py -3` when available, so the machine should have Python 3.10 or newer installed.
 
 ## Documentation map
