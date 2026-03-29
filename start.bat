@@ -21,7 +21,11 @@ if not exist "%LOCAL_DB_DIR%" (
 set "EXIT_SIGNAL=%TEMP%\treasurer.exit"
 if exist "%EXIT_SIGNAL%" del /f /q "%EXIT_SIGNAL%" >nul 2>nul
 
-for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = [Regex]::Escape((Get-Location).Path); Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(python|pythonw)\.exe$' -and $_.CommandLine -and $_.CommandLine -match $root -and ($_.CommandLine -match 'flask(\.exe)?\s+--app\s+app\s+run' -or $_.CommandLine -match 'app\.py') } | Select-Object -ExpandProperty ProcessId"`) do (
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = [Regex]::Escape((Get-Location).Path); $processes = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(python|pythonw)\.exe$' -and $_.CommandLine -and ($_.CommandLine -match $root -or $_.CommandLine -match 'treasurer_app' -or $_.CommandLine -match 'flask(\.exe)?\s+--app\s+app\s+run' -or $_.CommandLine -match 'app\.py') }; $processes | Select-Object -ExpandProperty ProcessId"`) do (
+    taskkill /PID %%P /F >nul 2>nul
+)
+
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique"`) do (
     taskkill /PID %%P /F >nul 2>nul
 )
 
