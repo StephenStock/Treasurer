@@ -22,6 +22,7 @@ The current preferred operating model is:
 - Preferred database: local SQLite
 - Live database path: `C:\TreasurerDB\Treasurer.db`
 - Mirrored backup path: OneDrive backup folder selected automatically by `start.bat`, with a local fallback if OneDrive is unavailable
+- Mirrored backup path can also be changed from the app's Settings page and is stored with the database
 - Local launch script: `start.bat`
 - Main docs: `README.md` and `docs/specs/`
 
@@ -70,6 +71,7 @@ Important local files:
 - Set `TREASURER_DATABASE` if you want the SQLite file somewhere else
 - Set `TREASURER_BACKUP_DATABASE` if you want the mirrored backup somewhere else
 - The value should be a file path, not a server connection string
+- The Settings page also includes a backup database path field for day-to-day changes
 
 ## Backups and restore
 

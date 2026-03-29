@@ -29,6 +29,8 @@ The app uses `TREASURER_DATABASE` to decide where the live SQLite file lives. `s
 
 If you want the database somewhere else, set `TREASURER_DATABASE` before launching it.
 
+You can also change the mirrored backup location from the app's Settings page. If you do not set one there, the launcher falls back to the automatic default backup path.
+
 `start.bat` prefers `py -3` when available, so the machine should have Python 3.10 or newer installed.
 
 ## Documentation map

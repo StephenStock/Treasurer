@@ -9,12 +9,31 @@
       <h2>Set up the five meeting blocks for the year, including date, title, and meeting type.</h2>
     </div>
     <div class="hero-note">
-      <p>These values drive the block layout on the cash page. We can extend this later to other yearly settings.</p>
+      <p>These values drive the block layout on the cash page. You can also choose where the mirrored backup database lives.</p>
     </div>
   </section>
 
   <section class="panel">
     <form method="post" class="settings-form">
+      <div class="panel-heading">
+        <div>
+          <h3>Database Backup</h3>
+          <p class="section-note">Set the mirrored backup file path. Leave it blank to fall back to the automatic default location.</p>
+        </div>
+      </div>
+      <div class="settings-single-field">
+        <label for="backup_database_path">Backup database path</label>
+        <input
+          type="text"
+          id="backup_database_path"
+          name="backup_database_path"
+          value="{{ backup_database_path or '' }}"
+          placeholder="C:\\TreasurerBackups\\Treasurer.backup.db"
+        >
+      </div>
+
+      <div class="settings-divider"></div>
+
       <div class="panel-heading">
         <div>
           <h3>Virtual Account Opening Balances</h3>

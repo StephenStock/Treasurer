@@ -585,6 +585,26 @@ table {
   gap: 1rem;
 }
 
+.settings-single-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.settings-single-field label {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.settings-single-field input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  font-size: 0.95rem;
+}
+
 .settings-divider {
   height: 1px;
   background: rgba(127, 29, 29, 0.16);

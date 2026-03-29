@@ -1,14 +1,14 @@
 import os
 from pathlib import Path
 
-from flask import Flask, request
+from flask import Flask, current_app, request
 
 from .db import (
     close_db,
     ensure_database_parent_path,
     ensure_financial_tables,
     default_database_path,
-    default_backup_database_path,
+    resolve_backup_database_path,
     get_db,
     init_app,
     init_db,
@@ -35,14 +35,15 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.config.from_mapping(
         SECRET_KEY="change-me",
         DATABASE=str(os.environ.get("TREASURER_DATABASE", default_database_path())),
-        BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", default_backup_database_path())),
+        BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", "")),
     )
 
     if test_config is not None:
         app.config.update(test_config)
 
     database_path = Path(app.config["DATABASE"])
-    backup_database_path = Path(app.config["BACKUP_DATABASE"])
+    backup_database_path = resolve_backup_database_path(database_path)
+    app.config["BACKUP_DATABASE"] = str(backup_database_path)
     ensure_database_parent_path(database_path)
     ensure_database_parent_path(backup_database_path)
     try:
@@ -57,7 +58,8 @@ def create_app(test_config: dict | None = None) -> Flask:
         if request.method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400:
             try:
                 db = get_db()
-                backup_database(db, backup_database_path)
+                backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(Path(current_app.config["DATABASE"])))
+                backup_database(db, backup_path)
             except Exception:
                 pass
         return response
@@ -84,7 +86,7 @@ def create_app(test_config: dict | None = None) -> Flask:
                 seed_virtual_account_balances(db, reporting_period_id=current_period["id"])
             db.commit()
             try:
-                backup_database(db, backup_database_path)
+                backup_database(db, Path(app.config["BACKUP_DATABASE"]))
             except Exception:
                 pass
 

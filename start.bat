@@ -53,9 +53,7 @@ if not %errorlevel%==0 (
 )
 
 for /f "usebackq delims=" %%I in (`%PYTHON_CMD% -c "import sys; print(sys.executable)"`) do set "PYTHON_EXE=%%I"
-if "%TREASURER_BACKUP_DATABASE%"=="" (
-    for /f "usebackq delims=" %%B in (`%PYTHON_CMD% -c "from treasurer_app.db import default_backup_database_path; print(default_backup_database_path())"`) do set "TREASURER_BACKUP_DATABASE=%%B"
-)
+for /f "usebackq delims=" %%B in (`%PYTHON_CMD% -c "import os; from pathlib import Path; from treasurer_app.db import resolve_backup_database_path; print(resolve_backup_database_path(Path(os.environ['TREASURER_DATABASE'])))"`) do set "TREASURER_BACKUP_DATABASE=%%B"
 
 echo Live database: %TREASURER_DATABASE%
 echo Backup database: %TREASURER_BACKUP_DATABASE%

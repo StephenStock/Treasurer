@@ -4,11 +4,14 @@ from pathlib import Path
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
 from .db import (
+    APP_SETTING_BACKUP_DATABASE,
     _dues_status,
     _find_existing_workbook,
     backup_database,
     cash_settlement_map,
+    delete_app_setting,
     create_cash_settlement,
+    get_app_setting,
     get_db,
     import_bank_statement_exports,
     import_bank_statement_uploads,
@@ -17,6 +20,8 @@ from .db import (
     seed_meeting_schedule,
     seed_virtual_account_balances,
     consolidate_virtual_accounts,
+    resolve_backup_database_path,
+    set_app_setting,
     virtual_account_report,
     table_exists,
 )
@@ -939,10 +944,23 @@ def forms():
 def settings():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
+    backup_database_path = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
+    if backup_database_path is None:
+        backup_database_path = str(resolve_backup_database_path(Path(current_app.config["DATABASE"])))
+    current_app.config["BACKUP_DATABASE"] = backup_database_path
     seed_virtual_account_balances(db, reporting_period_id)
     consolidate_virtual_accounts(db)
 
     if request.method == "POST":
+        backup_database_path = request.form.get("backup_database_path", "").strip()
+        if backup_database_path:
+            set_app_setting(db, APP_SETTING_BACKUP_DATABASE, backup_database_path)
+            current_app.config["BACKUP_DATABASE"] = backup_database_path
+        else:
+            delete_app_setting(db, APP_SETTING_BACKUP_DATABASE)
+            backup_database_path = str(resolve_backup_database_path(Path(current_app.config["DATABASE"])))
+            current_app.config["BACKUP_DATABASE"] = backup_database_path
+
         for meeting in _meeting_schedule():
             meeting_key = meeting["meeting_key"]
             meeting_date = request.form.get(f"{meeting_key}_date") or None
@@ -981,6 +999,7 @@ def settings():
     return render_template(
         "settings.html",
         active_page="settings",
+        backup_database_path=backup_database_path,
         meeting_schedule=_meeting_schedule(),
         virtual_accounts=virtual_account_report(db),
     )
