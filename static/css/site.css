@@ -45,10 +45,19 @@ body {
 
 .site-header-top {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.8rem;
   margin-bottom: 1rem;
+}
+
+.site-header-main-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
 }
 
 .site-header h1,
@@ -59,7 +68,6 @@ body {
   font-weight: 700;
 }
 
-.subtitle,
 .hero-note p,
 .event-card p,
 .message-card p,
@@ -82,46 +90,51 @@ button,
   text-transform: uppercase;
 }
 
-.subtitle {
-  margin: 0.35rem 0 0;
-  max-width: 34rem;
-  color: var(--muted);
-  text-align: left;
-}
-
 .top-nav {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 0.7rem;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .top-nav-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
+  justify-content: flex-end;
   align-items: flex-start;
+  width: 100%;
 }
 
 .report-nav-row {
   display: none;
+  gap: 0.45rem;
+  width: 100%;
+  margin-top: 0.05rem;
+  justify-content: flex-start;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-left: 0.25rem;
 }
 
-.top-nav.reports-open .report-nav-row {
+.site-header-top.reports-open .report-nav-row {
   display: flex;
 }
 
 .nav-menu-item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  padding: 0.55rem 0.75rem;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: max-content;
+  padding: 0.48rem 0.85rem;
   border-radius: 10px;
   color: var(--text);
   background: rgba(255, 250, 241, 0.88);
   border: 1px solid rgba(127, 29, 29, 0.12);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .nav-menu-item:hover,
@@ -139,6 +152,11 @@ button,
   color: #fff7f3;
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.report-nav-row .nav-menu-item {
+  font-size: 0.88rem;
+  letter-spacing: 0.01em;
 }
 
 .nav-link {

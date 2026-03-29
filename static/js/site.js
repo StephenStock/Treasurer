@@ -266,11 +266,11 @@ document.querySelectorAll('.bank-category-select[data-autosubmit="true"]').forEa
 });
 
 const reportToggle = document.querySelector('.report-toggle');
-const topNav = document.querySelector('.top-nav');
+const headerTop = document.querySelector('.site-header-top');
 
-if (reportToggle && topNav) {
+if (reportToggle && headerTop) {
   reportToggle.addEventListener('click', () => {
-    const isOpen = topNav.classList.toggle('reports-open');
+    const isOpen = headerTop.classList.toggle('reports-open');
     reportToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   });
 }

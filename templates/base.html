@@ -8,35 +8,36 @@
 </head>
 <body>
   <header class="site-header">
-    <div class="site-header-top">
-      <div>
-        <p class="eyebrow">Treasurer Admin</p>
-        <h1>Treasurer Portal</h1>
-        <p class="subtitle">Keep treasury records, forms, and admin workflows in one place.</p>
+    <div class="site-header-top {% if active_page == 'balances' %}reports-open{% endif %}">
+      <div class="site-header-main-line">
+        <div>
+          <p class="eyebrow">Treasurer Admin</p>
+          <h1>Treasurer</h1>
+        </div>
+        <nav class="top-nav" aria-label="Primary">
+          <div class="top-nav-row">
+            <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Home</a>
+            <a class="nav-link {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
+            <a class="nav-link {% if active_page == 'members' %}is-active{% endif %}" href="{{ url_for('main.members') }}">Members</a>
+            <a class="nav-link {% if active_page == 'bank' %}is-active{% endif %}" href="{{ url_for('main.bank') }}">Bank</a>
+            <a class="nav-link {% if active_page == 'cash' %}is-active{% endif %}" href="{{ url_for('main.cash') }}">Cash</a>
+            <button
+              class="nav-link report-toggle {% if active_page == 'balances' %}is-active{% endif %}"
+              type="button"
+              aria-expanded="{% if active_page == 'balances' %}true{% else %}false{% endif %}"
+            >
+              Reports
+            </button>
+            <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
+            <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+          </div>
+        </nav>
       </div>
-      <nav class="top-nav {% if active_page in ['statement', 'balances'] %}reports-open{% endif %}" aria-label="Primary">
-        <div class="top-nav-row">
-          <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Home</a>
-          <a class="nav-link {% if active_page == 'members' %}is-active{% endif %}" href="{{ url_for('main.members') }}">Members</a>
-          <a class="nav-link {% if active_page == 'bank' %}is-active{% endif %}" href="{{ url_for('main.bank') }}">Bank</a>
-          <a class="nav-link {% if active_page == 'cash' %}is-active{% endif %}" href="{{ url_for('main.cash') }}">Cash</a>
-          <button
-            class="nav-link report-toggle {% if active_page in ['statement', 'balances'] %}is-active{% endif %}"
-            type="button"
-            aria-expanded="{% if active_page in ['statement', 'balances'] %}true{% else %}false{% endif %}"
-          >
-            Reports
-          </button>
-          <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
-          <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
-        </div>
-        <div class="report-nav-row" aria-label="Reports">
-          <a class="nav-menu-item {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
-          {% for account in balance_nav_accounts %}
-            <a class="nav-menu-item {% if active_page == 'balances' and selected_account is defined and selected_account.code == account.code %}is-active{% endif %}" href="{{ url_for('main.balance_sheet', account_code=account.code) }}">{{ account.display_name }}</a>
-          {% endfor %}
-        </div>
-    </nav>
+      <div class="report-nav-row" aria-label="Reports">
+        {% for account in balance_nav_accounts %}
+          <a class="nav-menu-item {% if active_page == 'balances' and selected_account is defined and selected_account.code == account.code %}is-active{% endif %}" href="{{ url_for('main.balance_sheet', account_code=account.code) }}">{{ account.display_name }}</a>
+        {% endfor %}
+      </div>
     </div>
   </header>
 
