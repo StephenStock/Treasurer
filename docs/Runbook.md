@@ -20,8 +20,9 @@ The current preferred operating model is:
 - App stack: Flask, server-rendered templates, light vanilla JavaScript
 - Preferred operating mode: local Windows app
 - Preferred database: local SQLite
-- Live database path: `C:\TreasurerDB\Treasurer.db`
-- Mirrored backup folder: Documents folder selected automatically by `start.bat`, with OneDrive or the home folder used as fallback if needed
+- Live database path: set in `config.local` with `TREASURER_DATABASE`, or default to `C:\TreasurerDB\Treasurer.db`
+- Mirrored backup folder: selected from app settings, with a one-way safety copy written out on exit
+- Single active-copy lock: only one running copy should hold the database at a time
 - Mirrored backup folder can also be changed from the app's Settings page and is stored with the database
 - The home page shows a brief backup status line and an `Exit App` button
 - Detailed backup folder status, last backup time, and restore controls live in Settings
@@ -64,13 +65,16 @@ Important local files:
 ### Local database expectations
 
 - SQLite is the normal and preferred storage engine
-- The active live database should live at `C:\TreasurerDB\Treasurer.db` unless deliberately overridden
-- The mirrored backup should live in a OneDrive folder selected automatically by `start.bat`
+- The active live database should be the shared path you set in `TREASURER_DATABASE`
+- If `TREASURER_DATABASE` is not set, `start.bat` falls back to `C:\TreasurerDB\Treasurer.db`
+- The mirrored backup should live in a safe folder, typically OneDrive
 - The live database should not be stored inside OneDrive
+- If another copy is already running, `start.bat` should stop and tell you to close the other one first
 
 ### Database override
 
-- Set `TREASURER_DATABASE` if you want the SQLite file somewhere else
+- Create a local `config.local` file next to `start.bat`
+- Set `TREASURER_DATABASE` in that file to the shared UNC path you want both PCs to use
 - Set `TREASURER_BACKUP_DATABASE` if you want the mirrored backup somewhere else
 - The value can be either a folder path or a full `.db` file path; the app will use the folder and create `Treasurer.backup.db` inside it
 - The Settings page includes a backup folder field for day-to-day changes
@@ -174,7 +178,6 @@ Confirm:
 
 ## Known transitional items
 
-- `TREASURER_DATABASE` is the current database override variable
 - the preferred packaging target is a local Windows workflow
 - export pack generation and reconciliation checks are still being tightened
 

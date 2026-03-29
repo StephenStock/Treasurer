@@ -11,6 +11,7 @@ Transactions_Export_*.csv
 
 Accounts*.xlsx
 !TreasurerAccounts_Template.xlsx
+config.local
 
 .pytest_cache/
 .mypy_cache/

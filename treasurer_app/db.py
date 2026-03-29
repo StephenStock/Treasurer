@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sqlite3
+import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 from datetime import date, datetime, timedelta
@@ -35,6 +36,7 @@ MIGRATION_TABLE_ORDER = (
     "dining_charges",
     "payments",
     "ledger_categories",
+    "app_runtime_locks",
     "bank_transactions",
     "bank_transaction_allocations",
     "meetings",
@@ -45,6 +47,9 @@ MIGRATION_TABLE_ORDER = (
 
 APP_SETTING_BACKUP_DATABASE = "backup_database"
 APP_SETTING_BACKUP_FOLDER = "backup_folder"
+APP_RUNTIME_LOCK_NAME = "main"
+APP_RUNTIME_LOCK_HEARTBEAT_SECONDS = 30
+APP_RUNTIME_LOCK_STALE_SECONDS = 120
 BACKUP_DATABASE_FILENAME = "Treasurer.backup.db"
 
 BANK_CATEGORY_DEFINITIONS = [
@@ -162,6 +167,9 @@ def ensure_instance_path(app) -> None:
 
 
 def default_database_path() -> Path:
+    configured = os.environ.get("TREASURER_DATABASE")
+    if configured:
+        return Path(configured)
     return Path("C:/TreasurerDB/Treasurer.db")
 
 
@@ -191,6 +199,203 @@ def backup_database_file_path(backup_folder_path: Path) -> Path:
 
 def default_backup_database_path() -> Path:
     return backup_database_file_path(default_backup_folder_path())
+
+
+def runtime_lock_identity() -> dict[str, object]:
+    machine_name = os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "unknown-machine"
+    owner_name = os.environ.get("USERNAME") or os.environ.get("USER") or "unknown-user"
+    process_id = os.getpid()
+    session_token = uuid.uuid4().hex
+    return {
+        "machine_name": machine_name,
+        "owner_name": owner_name,
+        "process_id": process_id,
+        "session_token": session_token,
+    }
+
+
+def _utc_now_iso() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat()
+
+
+def _parse_iso_datetime(raw_value: str | None) -> datetime | None:
+    if not raw_value:
+        return None
+    try:
+        return datetime.fromisoformat(str(raw_value))
+    except ValueError:
+        return None
+
+
+def _runtime_lock_is_stale(row: sqlite3.Row | None, stale_seconds: int = APP_RUNTIME_LOCK_STALE_SECONDS) -> bool:
+    if row is None:
+        return True
+
+    last_seen_at = _parse_iso_datetime(row["last_seen_at"] if "last_seen_at" in row.keys() else None)
+    if last_seen_at is None:
+        return True
+
+    return datetime.utcnow() - last_seen_at > timedelta(seconds=stale_seconds)
+
+
+def get_runtime_lock_status(db: DatabaseHandle, lock_name: str = APP_RUNTIME_LOCK_NAME) -> sqlite3.Row | None:
+    if not table_exists(db, "app_runtime_locks"):
+        return None
+
+    row = db.execute(
+        """
+        SELECT *
+        FROM app_runtime_locks
+        WHERE lock_name = ?
+        LIMIT 1
+        """,
+        (lock_name,),
+    ).fetchone()
+    if row is None or row["released_at"]:
+        return None
+    if _runtime_lock_is_stale(row):
+        return None
+    return row
+
+
+def check_runtime_lock_available(db: DatabaseHandle, lock_name: str = APP_RUNTIME_LOCK_NAME) -> tuple[bool, sqlite3.Row | None]:
+    lock_row = get_runtime_lock_status(db, lock_name)
+    if lock_row is None:
+        return True, None
+    return False, lock_row
+
+
+def claim_runtime_lock(
+    db: DatabaseHandle,
+    *,
+    lock_name: str = APP_RUNTIME_LOCK_NAME,
+    owner_name: str,
+    machine_name: str,
+    process_id: int,
+    session_token: str,
+) -> tuple[bool, sqlite3.Row | None]:
+    if not table_exists(db, "app_runtime_locks"):
+        return True, None
+
+    active_lock = get_runtime_lock_status(db, lock_name)
+    if active_lock is not None and active_lock["session_token"] != session_token:
+        return False, active_lock
+
+    now = _utc_now_iso()
+    if active_lock is None:
+        db.execute(
+            """
+            INSERT INTO app_runtime_locks (
+                lock_name,
+                owner_name,
+                machine_name,
+                process_id,
+                session_token,
+                locked_at,
+                last_seen_at,
+                released_at,
+                release_reason
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+            ON CONFLICT(lock_name) DO UPDATE SET
+                owner_name = excluded.owner_name,
+                machine_name = excluded.machine_name,
+                process_id = excluded.process_id,
+                session_token = excluded.session_token,
+                locked_at = excluded.locked_at,
+                last_seen_at = excluded.last_seen_at,
+                released_at = NULL,
+                release_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                lock_name,
+                owner_name,
+                machine_name,
+                process_id,
+                session_token,
+                now,
+                now,
+            ),
+        )
+    else:
+        db.execute(
+            """
+            UPDATE app_runtime_locks
+            SET
+                owner_name = ?,
+                machine_name = ?,
+                process_id = ?,
+                session_token = ?,
+                last_seen_at = ?,
+                released_at = NULL,
+                release_reason = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE lock_name = ?
+            """,
+            (
+                owner_name,
+                machine_name,
+                process_id,
+                session_token,
+                now,
+                lock_name,
+            ),
+        )
+
+    refreshed = db.execute(
+        """
+        SELECT *
+        FROM app_runtime_locks
+        WHERE lock_name = ?
+        LIMIT 1
+        """,
+        (lock_name,),
+    ).fetchone()
+    return True, refreshed
+
+
+def refresh_runtime_lock(
+    db: DatabaseHandle,
+    session_token: str,
+    *,
+    lock_name: str = APP_RUNTIME_LOCK_NAME,
+) -> bool:
+    if not table_exists(db, "app_runtime_locks"):
+        return False
+
+    now = _utc_now_iso()
+    cursor = db.execute(
+        """
+        UPDATE app_runtime_locks
+        SET last_seen_at = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE lock_name = ? AND session_token = ? AND released_at IS NULL
+        """,
+        (now, lock_name, session_token),
+    )
+    return cursor.rowcount > 0
+
+
+def release_runtime_lock(
+    db: DatabaseHandle,
+    session_token: str,
+    *,
+    lock_name: str = APP_RUNTIME_LOCK_NAME,
+    release_reason: str = "released",
+) -> bool:
+    if not table_exists(db, "app_runtime_locks"):
+        return False
+
+    now = _utc_now_iso()
+    cursor = db.execute(
+        """
+        UPDATE app_runtime_locks
+        SET released_at = ?, release_reason = ?, last_seen_at = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE lock_name = ? AND session_token = ? AND released_at IS NULL
+        """,
+        (now, release_reason, now, lock_name, session_token),
+    )
+    return cursor.rowcount > 0
 
 
 def _read_backup_setting(primary_database_path: Path | None = None) -> Path | None:
@@ -1043,6 +1248,21 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text
         );
 
+        CREATE TABLE IF NOT EXISTS app_runtime_locks (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            lock_name TEXT NOT NULL UNIQUE,
+            owner_name TEXT NOT NULL,
+            machine_name TEXT NOT NULL,
+            process_id INTEGER NOT NULL,
+            session_token TEXT NOT NULL UNIQUE,
+            locked_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            released_at TEXT,
+            release_reason TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+        );
+
         CREATE TABLE IF NOT EXISTS bank_transactions (
             id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
             reporting_period_id INTEGER NOT NULL,
@@ -1179,6 +1399,7 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_bank_transactions_date ON bank_transactions (transaction_date);
         CREATE INDEX IF NOT EXISTS idx_bank_transactions_reporting_period_id ON bank_transactions (reporting_period_id);
         CREATE INDEX IF NOT EXISTS idx_app_settings_updated_at ON app_settings (updated_at);
+        CREATE INDEX IF NOT EXISTS idx_app_runtime_locks_last_seen_at ON app_runtime_locks (last_seen_at);
         CREATE INDEX IF NOT EXISTS idx_bank_transaction_allocations_transaction_id ON bank_transaction_allocations (bank_transaction_id);
         CREATE INDEX IF NOT EXISTS idx_bank_transaction_allocations_category_id ON bank_transaction_allocations (ledger_category_id);
         CREATE INDEX IF NOT EXISTS idx_meetings_reporting_period_id ON meetings (reporting_period_id);
@@ -2661,3 +2882,18 @@ def init_app(app) -> None:
         imported = import_cash_entries_from_workbook(db, reporting_period_id, workbook_path, replace=True)
         db.commit()
         print(f"Imported {imported} cash entries from the workbook.")
+
+    @app.cli.command("check-runtime-lock")
+    def check_runtime_lock_command() -> None:
+        db = get_db()
+        lock_row = get_runtime_lock_status(db)
+        if lock_row is None:
+            print("Runtime lock is available.")
+            return
+
+        print(
+            "Treasurer is already running on "
+            f"{lock_row['machine_name']} as {lock_row['owner_name']} "
+            f"since {lock_row['locked_at']}."
+        )
+        raise SystemExit(1)

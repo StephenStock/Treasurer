@@ -18,6 +18,7 @@ from .db import (
     create_cash_settlement,
     get_app_setting,
     get_db,
+    get_runtime_lock_status,
     import_bank_statement_exports,
     import_bank_statement_uploads,
     import_bank_transactions_from_workbook,
@@ -28,6 +29,7 @@ from .db import (
     resolve_backup_folder_path,
     resolve_backup_database_path,
     restore_database_from_backup,
+    release_runtime_lock,
     set_app_setting,
     virtual_account_report,
     table_exists,
@@ -699,10 +701,26 @@ def _backup_status_context():
     }
 
 
+def _runtime_lock_context():
+    db = get_db()
+    lock = get_runtime_lock_status(db)
+    if lock is None:
+        return {
+            "runtime_lock_active": False,
+            "runtime_lock_holder": None,
+        }
+
+    return {
+        "runtime_lock_active": True,
+        "runtime_lock_holder": lock,
+    }
+
+
 @main_bp.route("/")
 def dashboard():
     db = get_db()
     backup_status = _backup_status_context()
+    runtime_lock_status = _runtime_lock_context()
 
     stats = {
         "members": db.execute("SELECT COUNT(*) AS total FROM members").fetchone()["total"],
@@ -787,12 +805,25 @@ def dashboard():
         bookings=bookings,
         messages=messages,
         **backup_status,
+        **runtime_lock_status,
     )
 
 
 def _handle_app_exit():
     db = get_db()
     backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(Path(current_app.config["DATABASE"])))
+
+    try:
+        current_app.config["RUNTIME_LOCK_STOP_EVENT"].set()
+        release_runtime_lock(
+            db,
+            current_app.config.get("RUNTIME_LOCK_TOKEN", ""),
+            lock_name=current_app.config.get("RUNTIME_LOCK_NAME", "main"),
+            release_reason="app exit",
+        )
+        db.commit()
+    except Exception:
+        pass
 
     try:
         backup_database(db, backup_path)

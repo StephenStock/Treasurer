@@ -4,6 +4,12 @@ cd /d "%~dp0"
 if "%LOCALAPPDATA%"=="" set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
 set "APP_DATA=%LOCALAPPDATA%\Treasurer"
 set "LOCAL_DB_DIR=C:\TreasurerDB"
+if exist "%~dp0config.local" (
+    for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0config.local") do (
+        if /i "%%A"=="TREASURER_DATABASE" if not defined TREASURER_DATABASE set "TREASURER_DATABASE=%%B"
+        if /i "%%A"=="TREASURER_BACKUP_DATABASE" if not defined TREASURER_BACKUP_DATABASE set "TREASURER_BACKUP_DATABASE=%%B"
+    )
+)
 if "%TREASURER_DATABASE%"=="" set "TREASURER_DATABASE=%LOCAL_DB_DIR%\Treasurer.db"
 set "TEMP=%APP_DATA%\tmp"
 set "TMP=%TEMP%"
@@ -11,23 +17,9 @@ set "TMP=%TEMP%"
 if not exist "%APP_DATA%" mkdir "%APP_DATA%"
 if not exist "%TEMP%" mkdir "%TEMP%"
 if not exist "%LOCAL_DB_DIR%" mkdir "%LOCAL_DB_DIR%"
-if not exist "%LOCAL_DB_DIR%" (
-    set "LOCAL_DB_DIR=%APP_DATA%\TreasurerDB"
-    set "TREASURER_DATABASE=%LOCAL_DB_DIR%\Treasurer.db"
-    if not exist "%LOCAL_DB_DIR%" mkdir "%LOCAL_DB_DIR%"
-    echo Using fallback local database folder.
-)
 
 set "EXIT_SIGNAL=%TEMP%\treasurer.exit"
 if exist "%EXIT_SIGNAL%" del /f /q "%EXIT_SIGNAL%" >nul 2>nul
-
-for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = [Regex]::Escape((Get-Location).Path); $processes = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(python|pythonw)\.exe$' -and $_.CommandLine -and ($_.CommandLine -match $root -or $_.CommandLine -match 'treasurer_app' -or $_.CommandLine -match 'flask(\.exe)?\s+--app\s+app\s+run' -or $_.CommandLine -match 'app\.py') }; $processes | Select-Object -ExpandProperty ProcessId"`) do (
-    taskkill /PID %%P /F >nul 2>nul
-)
-
-for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique"`) do (
-    taskkill /PID %%P /F >nul 2>nul
-)
 
 set "PYTHON_CMD=python"
 where python >nul 2>nul
@@ -67,7 +59,11 @@ echo Live database: %TREASURER_DATABASE%
 echo Backup folder: %TREASURER_BACKUP_FOLDER%
 echo Backup file: %TREASURER_BACKUP_DATABASE%
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode SyncStart
+if not exist "%TREASURER_DATABASE%" (
+    if exist "%TREASURER_BACKUP_DATABASE%" (
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode Restore
+    )
+)
 
 if not exist "%TREASURER_DATABASE%" (
     %PYTHON_CMD% -m flask --app app init-db
@@ -86,6 +82,21 @@ if not exist "%TREASURER_DATABASE%" (
             goto :eof
         )
     )
+)
+
+%PYTHON_CMD% -m flask --app app check-runtime-lock
+if not %errorlevel%==0 (
+    echo You cant run here unless you shut the other one down.
+    pause
+    goto :eof
+)
+
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = [Regex]::Escape((Get-Location).Path); $processes = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(python|pythonw)\.exe$' -and $_.CommandLine -and ($_.CommandLine -match $root -or $_.CommandLine -match 'treasurer_app' -or $_.CommandLine -match 'flask(\.exe)?\s+--app\s+app\s+run' -or $_.CommandLine -match 'app\.py') }; $processes | Select-Object -ExpandProperty ProcessId"`) do (
+    taskkill /PID %%P /F >nul 2>nul
+)
+
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique"`) do (
+    taskkill /PID %%P /F >nul 2>nul
 )
 
 start "" http://127.0.0.1:5000/

@@ -25,11 +25,13 @@ This will:
 3. Create the local SQLite database on first run
 4. Start the development server at `http://127.0.0.1:5000`
 
-The app uses `TREASURER_DATABASE` to decide where the live SQLite file lives. `start.bat` defaults to `C:\TreasurerDB\Treasurer.db` for the live database and keeps a mirrored backup copy in a backup folder.
+`start.bat` reads `config.local` first. Put `TREASURER_DATABASE=\\DEN\TreasurerDB\Treasurer.db` in that file on both PCs so they point at the same shared live database. If `config.local` is missing, it falls back to `C:\TreasurerDB\Treasurer.db`.
 
-If you want the database somewhere else, set `TREASURER_DATABASE` before launching it.
+Use `config.local.example` as the template for the file.
 
-You can also change the mirrored backup folder from the app's Settings page. The app will create the folder if it does not exist and store `Treasurer.backup.db` inside it. If you do not set one there, the launcher falls back to a default folder under your Documents area when possible, with OneDrive or the home folder used as backup fallbacks if needed.
+You can change the mirrored backup folder from the app's Settings page. The app will create the folder if it does not exist and store `Treasurer.backup.db` inside it. The backup is a one-way safety copy written out when the app exits.
+
+If another copy is already open, the launcher will stop with a message telling you to shut the other one down first.
 
 The home page shows a one-line backup status and an `Exit App` button. The detailed backup folder, last-backup timestamp, and restore controls live in Settings.
 

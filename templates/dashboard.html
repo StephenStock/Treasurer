@@ -10,6 +10,11 @@
         <p class="section-note">{{ backup_dashboard_summary }}</p>
       </div>
     </div>
+    {% if runtime_lock_active and runtime_lock_holder %}
+      <p class="attention-banner attention-banner-ok">
+        Active here as {{ runtime_lock_holder.owner_name }} on {{ runtime_lock_holder.machine_name }}.
+      </p>
+    {% endif %}
     <p class="attention-banner attention-banner-ok" data-exit-message>
       Exit has not been requested yet. Use Exit App when you are done.
     </p>

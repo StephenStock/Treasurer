@@ -1,10 +1,14 @@
 import os
+import threading
 from pathlib import Path
 
-from flask import Flask, current_app, request
+from flask import Flask, current_app, render_template, request
 
 from .db import (
+    APP_RUNTIME_LOCK_HEARTBEAT_SECONDS,
+    APP_RUNTIME_LOCK_NAME,
     close_db,
+    claim_runtime_lock,
     ensure_database_parent_path,
     ensure_financial_tables,
     default_database_path,
@@ -20,6 +24,8 @@ from .db import (
     seed_cashbook_from_workbook,
     seed_member_prepayments_from_workbook,
     backup_database,
+    runtime_lock_identity,
+    restore_database_from_backup,
     seed_virtual_account_transfers_from_workbook,
     sync_database_files,
     consolidate_virtual_accounts,
@@ -42,6 +48,20 @@ def create_app(test_config: dict | None = None) -> Flask:
         BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", "")),
     )
 
+    runtime_identity = runtime_lock_identity()
+    app.config.update(
+        RUNTIME_LOCK_NAME=APP_RUNTIME_LOCK_NAME,
+        RUNTIME_LOCK_TOKEN=runtime_identity["session_token"],
+        RUNTIME_LOCK_OWNER=runtime_identity["owner_name"],
+        RUNTIME_LOCK_MACHINE=runtime_identity["machine_name"],
+        RUNTIME_LOCK_PROCESS_ID=runtime_identity["process_id"],
+        RUNTIME_LOCK_BLOCKED=False,
+        RUNTIME_LOCK_HOLDER=None,
+        RUNTIME_LOCK_THREAD_STARTED=False,
+        RUNTIME_LOCK_THREAD_LOCK=threading.Lock(),
+        RUNTIME_LOCK_STOP_EVENT=threading.Event(),
+    )
+
     if test_config is not None:
         app.config.update(test_config)
 
@@ -51,11 +71,73 @@ def create_app(test_config: dict | None = None) -> Flask:
     ensure_database_parent_path(database_path)
     ensure_database_parent_path(backup_database_path)
     try:
-        sync_database_files(database_path, backup_database_path)
+        if database_path.exists():
+            if not backup_database_path.exists():
+                sync_database_files(database_path, backup_database_path)
+        elif backup_database_path.exists():
+            restore_database_from_backup(database_path, backup_database_path)
     except Exception:
         pass
     init_app(app)
     app.teardown_appcontext(close_db)
+
+    @app.before_request
+    def enforce_runtime_lock():
+        if request.endpoint == "static":
+            return None
+
+        db = get_db()
+        acquired, holder = claim_runtime_lock(
+            db,
+            lock_name=current_app.config["RUNTIME_LOCK_NAME"],
+            owner_name=current_app.config["RUNTIME_LOCK_OWNER"],
+            machine_name=current_app.config["RUNTIME_LOCK_MACHINE"],
+            process_id=current_app.config["RUNTIME_LOCK_PROCESS_ID"],
+            session_token=current_app.config["RUNTIME_LOCK_TOKEN"],
+        )
+        if not acquired:
+            current_app.config["RUNTIME_LOCK_BLOCKED"] = True
+            current_app.config["RUNTIME_LOCK_HOLDER"] = dict(holder) if holder is not None else None
+            return (
+                render_template(
+                    "locked.html",
+                    lock_holder=holder,
+                ),
+                423,
+            )
+
+        current_app.config["RUNTIME_LOCK_BLOCKED"] = False
+        current_app.config["RUNTIME_LOCK_HOLDER"] = dict(holder) if holder is not None else None
+        db.commit()
+
+        if not current_app.config["RUNTIME_LOCK_THREAD_STARTED"]:
+            with current_app.config["RUNTIME_LOCK_THREAD_LOCK"]:
+                if not current_app.config["RUNTIME_LOCK_THREAD_STARTED"]:
+                    current_app.config["RUNTIME_LOCK_THREAD_STARTED"] = True
+
+                    def _runtime_lock_heartbeat() -> None:
+                        while not app.config["RUNTIME_LOCK_STOP_EVENT"].wait(APP_RUNTIME_LOCK_HEARTBEAT_SECONDS):
+                            try:
+                                with app.app_context():
+                                    heartbeat_db = get_db()
+                                    heartbeat_acquired, heartbeat_holder = claim_runtime_lock(
+                                        heartbeat_db,
+                                        lock_name=app.config["RUNTIME_LOCK_NAME"],
+                                        owner_name=app.config["RUNTIME_LOCK_OWNER"],
+                                        machine_name=app.config["RUNTIME_LOCK_MACHINE"],
+                                        process_id=app.config["RUNTIME_LOCK_PROCESS_ID"],
+                                        session_token=app.config["RUNTIME_LOCK_TOKEN"],
+                                    )
+                                    app.config["RUNTIME_LOCK_BLOCKED"] = not heartbeat_acquired
+                                    app.config["RUNTIME_LOCK_HOLDER"] = (
+                                        dict(heartbeat_holder) if heartbeat_holder is not None else None
+                                    )
+                                    heartbeat_db.commit()
+                            except Exception:
+                                break
+
+                    threading.Thread(target=_runtime_lock_heartbeat, name="runtime-lock-heartbeat", daemon=True).start()
+        return None
 
     @app.after_request
     def mirror_database(response):

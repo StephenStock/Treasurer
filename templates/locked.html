@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="10">
+  <title>Treasurer Locked</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+</head>
+<body>
+  <main class="page-shell">
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Treasurer Locked</p>
+          <h3>You can’t run here yet</h3>
+        </div>
+      </div>
+      <p class="attention-banner attention-banner-error">
+        This copy is already open somewhere else. Shut the other one down first, then refresh this page.
+      </p>
+      {% if lock_holder %}
+        <div class="message-card">
+          <p><strong>Active on:</strong> {{ lock_holder.machine_name }}</p>
+          <p><strong>User:</strong> {{ lock_holder.owner_name }}</p>
+          <p><strong>Process:</strong> {{ lock_holder.process_id }}</p>
+          <p><strong>Locked at:</strong> {{ lock_holder.locked_at }}</p>
+          <p><strong>Last seen:</strong> {{ lock_holder.last_seen_at }}</p>
+        </div>
+      {% endif %}
+      <p>
+        Once the other copy is closed, this page should work normally after you refresh.
+      </p>
+      <p>
+        <button type="button" onclick="window.location.reload();">Try again</button>
+      </p>
+    </section>
+  </main>
+</body>
+</html>
