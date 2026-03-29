@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
@@ -10,6 +10,7 @@ from .db import (
     _find_existing_workbook,
     backup_database,
     cash_settlement_map,
+    close_db,
     delete_app_setting,
     create_cash_settlement,
     get_app_setting,
@@ -23,6 +24,7 @@ from .db import (
     consolidate_virtual_accounts,
     resolve_backup_folder_path,
     resolve_backup_database_path,
+    restore_database_from_backup,
     set_app_setting,
     virtual_account_report,
     table_exists,
@@ -407,9 +409,46 @@ def _members_page_context():
     }
 
 
+def _backup_status_context():
+    db = get_db()
+    database_path = Path(current_app.config["DATABASE"])
+    backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(database_path))
+
+    selected_folder = get_app_setting(db, APP_SETTING_BACKUP_FOLDER)
+    selected_legacy_backup = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
+    backup_folder_selected = bool(selected_folder or selected_legacy_backup)
+
+    if selected_folder:
+        backup_folder_path = Path(selected_folder)
+    elif selected_legacy_backup:
+        legacy_path = Path(selected_legacy_backup)
+        backup_folder_path = legacy_path.parent if legacy_path.suffix.lower() == ".db" else legacy_path
+    else:
+        backup_folder_path = backup_path.parent
+
+    backup_file_exists = backup_path.exists()
+    last_backup_at = None
+    if backup_file_exists:
+        last_backup_at = datetime.fromtimestamp(backup_path.stat().st_mtime)
+
+    return {
+        "backup_folder_selected": backup_folder_selected,
+        "backup_folder_path": backup_folder_path,
+        "backup_file_path": backup_path,
+        "backup_file_exists": backup_file_exists,
+        "backup_last_backed_up": last_backup_at,
+        "backup_selection_message": (
+            "No backup folder has been selected yet. The app is using the automatic backup location."
+            if not backup_folder_selected
+            else "Backup folder selected in Settings."
+        ),
+    }
+
+
 @main_bp.route("/")
 def dashboard():
     db = get_db()
+    backup_status = _backup_status_context()
 
     stats = {
         "members": db.execute("SELECT COUNT(*) AS total FROM members").fetchone()["total"],
@@ -493,7 +532,32 @@ def dashboard():
         upcoming_events=upcoming_events,
         bookings=bookings,
         messages=messages,
+        **backup_status,
     )
+
+
+@main_bp.post("/backup/restore")
+def restore_backup():
+    db = get_db()
+    database_path = Path(current_app.config["DATABASE"])
+    backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(database_path))
+
+    if not backup_path.exists():
+        flash("No backup file was found to restore from.", "error")
+        return redirect(url_for("main.dashboard"))
+
+    db.commit()
+    close_db()
+
+    try:
+        restore_database_from_backup(database_path, backup_path)
+        current_app.config["BACKUP_DATABASE"] = str(resolve_backup_database_path(database_path))
+    except Exception:
+        flash("The backup could not be restored.", "error")
+        return redirect(url_for("main.dashboard"))
+
+    flash("Local database restored from the mirrored backup.", "success")
+    return redirect(url_for("main.dashboard"))
 
 
 @main_bp.route("/bank")

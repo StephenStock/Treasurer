@@ -285,6 +285,47 @@ button,
   padding: 1.2rem 1.3rem;
 }
 
+.backup-panel {
+  margin-bottom: 1.5rem;
+}
+
+.backup-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.backup-status-card {
+  padding: 1rem 1.05rem;
+  border-radius: 18px;
+  background: rgba(255, 250, 241, 0.88);
+  border: 1px solid rgba(215, 199, 172, 0.55);
+}
+
+.backup-status-card span {
+  display: block;
+  color: var(--muted);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 0.9rem;
+}
+
+.backup-status-card strong {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.backup-actions {
+  display: flex;
+  align-items: flex-start;
+}
+
+.backup-actions .button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .stat-card span {
   display: block;
   color: var(--muted);
@@ -846,7 +887,8 @@ th {
   .site-header-top,
   .hero-card,
   .stats-grid,
-  .content-grid {
+  .content-grid,
+  .backup-status-grid {
     grid-template-columns: 1fr;
     display: grid;
   }
@@ -867,6 +909,14 @@ th {
   .panel-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .backup-actions {
+    width: 100%;
+  }
+
+  .backup-actions .button {
+    width: 100%;
   }
 
   input[type="search"] {
