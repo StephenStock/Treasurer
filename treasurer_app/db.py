@@ -42,6 +42,8 @@ MIGRATION_TABLE_ORDER = (
 )
 
 APP_SETTING_BACKUP_DATABASE = "backup_database"
+APP_SETTING_BACKUP_FOLDER = "backup_folder"
+BACKUP_DATABASE_FILENAME = "Treasurer.backup.db"
 
 BANK_CATEGORY_DEFINITIONS = [
     ("CASH", "Cash", "in", 10),
@@ -165,46 +167,102 @@ def default_database_path() -> Path:
     return Path("C:/TreasurerDB/Treasurer.db")
 
 
-def default_backup_database_path() -> Path:
+def default_backup_folder_path() -> Path:
     configured = os.environ.get("TREASURER_BACKUP_DATABASE")
     if configured:
-        return Path(configured)
+        configured_path = Path(configured)
+        if configured_path.suffix.lower() == ".db":
+            return configured_path.parent
+        return configured_path
+
+    documents_dir = Path.home() / "Documents"
+    if documents_dir.exists():
+        return documents_dir / "Treasurer Backups"
 
     for env_name in ("OneDriveCommercial", "OneDriveConsumer", "OneDrive"):
         one_drive_root = os.environ.get(env_name)
         if one_drive_root:
-            return Path(one_drive_root) / "TreasurerBackups" / "Treasurer.backup.db"
+            return Path(one_drive_root) / "Treasurer Backups"
 
-    return Path("C:/TreasurerBackups/Treasurer.backup.db")
+    return Path.home() / "Treasurer Backups"
+
+
+def backup_database_file_path(backup_folder_path: Path) -> Path:
+    return backup_folder_path / BACKUP_DATABASE_FILENAME
+
+
+def default_backup_database_path() -> Path:
+    return backup_database_file_path(default_backup_folder_path())
+
+
+def _read_backup_setting(primary_database_path: Path | None = None) -> Path | None:
+    if primary_database_path is None or not primary_database_path.exists():
+        return None
+
+    connection = None
+    try:
+        connection = sqlite3.connect(primary_database_path)
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            """
+            SELECT setting_key, setting_value
+            FROM app_settings
+            WHERE setting_key IN (?, ?)
+            ORDER BY CASE setting_key WHEN ? THEN 0 ELSE 1 END
+            LIMIT 1
+            """,
+            (
+                APP_SETTING_BACKUP_FOLDER,
+                APP_SETTING_BACKUP_DATABASE,
+                APP_SETTING_BACKUP_FOLDER,
+            ),
+        ).fetchone()
+        if not row or not row["setting_value"]:
+            return None
+
+        configured_path = Path(str(row["setting_value"]))
+        if row["setting_key"] == APP_SETTING_BACKUP_DATABASE and configured_path.suffix.lower() == ".db":
+            return configured_path.parent
+        return configured_path
+    except sqlite3.Error:
+        return None
+    finally:
+        if connection is not None:
+            connection.close()
 
 
 def resolve_backup_database_path(primary_database_path: Path | None = None) -> Path:
-    if primary_database_path is not None and primary_database_path.exists():
-        connection = None
-        try:
-            connection = sqlite3.connect(primary_database_path)
-            connection.row_factory = sqlite3.Row
-            row = connection.execute(
-                """
-                SELECT setting_value
-                FROM app_settings
-                WHERE setting_key = ?
-                """,
-                (APP_SETTING_BACKUP_DATABASE,),
-            ).fetchone()
-            if row and row["setting_value"]:
-                return Path(str(row["setting_value"]))
-        except sqlite3.Error:
-            pass
-        finally:
-            if connection is not None:
-                connection.close()
+    backup_folder = _read_backup_setting(primary_database_path)
+    if backup_folder is not None:
+        if backup_folder.suffix.lower() == ".db":
+            return backup_folder
+        return backup_database_file_path(backup_folder)
 
     configured = os.environ.get("TREASURER_BACKUP_DATABASE")
     if configured:
-        return Path(configured)
+        configured_path = Path(configured)
+        if configured_path.suffix.lower() == ".db":
+            return configured_path
+        return backup_database_file_path(configured_path)
 
     return default_backup_database_path()
+
+
+def resolve_backup_folder_path(primary_database_path: Path | None = None) -> Path:
+    backup_path = _read_backup_setting(primary_database_path)
+    if backup_path is not None:
+        if backup_path.suffix.lower() == ".db":
+            return backup_path.parent
+        return backup_path
+
+    configured = os.environ.get("TREASURER_BACKUP_DATABASE")
+    if configured:
+        configured_path = Path(configured)
+        if configured_path.suffix.lower() == ".db":
+            return configured_path.parent
+        return configured_path
+
+    return default_backup_folder_path()
 
 
 def ensure_database_parent_path(database_path: Path) -> None:

@@ -53,10 +53,12 @@ if not %errorlevel%==0 (
 )
 
 for /f "usebackq delims=" %%I in (`%PYTHON_CMD% -c "import sys; print(sys.executable)"`) do set "PYTHON_EXE=%%I"
+for /f "usebackq delims=" %%F in (`%PYTHON_CMD% -c "import os; from pathlib import Path; from treasurer_app.db import resolve_backup_folder_path; print(resolve_backup_folder_path(Path(os.environ['TREASURER_DATABASE'])))"`) do set "TREASURER_BACKUP_FOLDER=%%F"
 for /f "usebackq delims=" %%B in (`%PYTHON_CMD% -c "import os; from pathlib import Path; from treasurer_app.db import resolve_backup_database_path; print(resolve_backup_database_path(Path(os.environ['TREASURER_DATABASE'])))"`) do set "TREASURER_BACKUP_DATABASE=%%B"
 
 echo Live database: %TREASURER_DATABASE%
-echo Backup database: %TREASURER_BACKUP_DATABASE%
+echo Backup folder: %TREASURER_BACKUP_FOLDER%
+echo Backup file: %TREASURER_BACKUP_DATABASE%
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode SyncStart
 

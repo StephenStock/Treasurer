@@ -5,6 +5,7 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 
 from .db import (
     APP_SETTING_BACKUP_DATABASE,
+    APP_SETTING_BACKUP_FOLDER,
     _dues_status,
     _find_existing_workbook,
     backup_database,
@@ -20,6 +21,7 @@ from .db import (
     seed_meeting_schedule,
     seed_virtual_account_balances,
     consolidate_virtual_accounts,
+    resolve_backup_folder_path,
     resolve_backup_database_path,
     set_app_setting,
     virtual_account_report,
@@ -944,22 +946,33 @@ def forms():
 def settings():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
-    backup_database_path = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
-    if backup_database_path is None:
-        backup_database_path = str(resolve_backup_database_path(Path(current_app.config["DATABASE"])))
-    current_app.config["BACKUP_DATABASE"] = backup_database_path
+    backup_folder_path = get_app_setting(db, APP_SETTING_BACKUP_FOLDER)
+    if backup_folder_path is None:
+        backup_folder_path = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
+    if backup_folder_path is None:
+        backup_folder_path = str(resolve_backup_folder_path(Path(current_app.config["DATABASE"])))
+    elif backup_folder_path.endswith(".db"):
+        backup_folder_path = str(Path(backup_folder_path).parent)
+
+    current_app.config["BACKUP_DATABASE"] = str(resolve_backup_database_path(Path(current_app.config["DATABASE"])))
     seed_virtual_account_balances(db, reporting_period_id)
     consolidate_virtual_accounts(db)
 
     if request.method == "POST":
-        backup_database_path = request.form.get("backup_database_path", "").strip()
-        if backup_database_path:
-            set_app_setting(db, APP_SETTING_BACKUP_DATABASE, backup_database_path)
-            current_app.config["BACKUP_DATABASE"] = backup_database_path
-        else:
+        backup_folder_path = request.form.get("backup_folder_path", "").strip()
+        if backup_folder_path:
+            set_app_setting(db, APP_SETTING_BACKUP_FOLDER, backup_folder_path)
             delete_app_setting(db, APP_SETTING_BACKUP_DATABASE)
-            backup_database_path = str(resolve_backup_database_path(Path(current_app.config["DATABASE"])))
-            current_app.config["BACKUP_DATABASE"] = backup_database_path
+            current_app.config["BACKUP_DATABASE"] = str(
+                resolve_backup_database_path(Path(current_app.config["DATABASE"]))
+            )
+        else:
+            delete_app_setting(db, APP_SETTING_BACKUP_FOLDER)
+            delete_app_setting(db, APP_SETTING_BACKUP_DATABASE)
+            backup_folder_path = str(resolve_backup_folder_path(Path(current_app.config["DATABASE"])))
+            current_app.config["BACKUP_DATABASE"] = str(
+                resolve_backup_database_path(Path(current_app.config["DATABASE"]))
+            )
 
         for meeting in _meeting_schedule():
             meeting_key = meeting["meeting_key"]
@@ -999,7 +1012,7 @@ def settings():
     return render_template(
         "settings.html",
         active_page="settings",
-        backup_database_path=backup_database_path,
+        backup_folder_path=backup_folder_path,
         meeting_schedule=_meeting_schedule(),
         virtual_accounts=virtual_account_report(db),
     )

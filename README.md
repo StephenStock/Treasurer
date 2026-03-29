@@ -25,11 +25,11 @@ This will:
 3. Create the local SQLite database on first run
 4. Start the development server at `http://127.0.0.1:5000`
 
-The app uses `TREASURER_DATABASE` to decide where the live SQLite file lives. `start.bat` defaults to `C:\TreasurerDB\Treasurer.db` for the live database and keeps a mirrored backup copy in a OneDrive backup folder, with a local fallback if OneDrive is unavailable.
+The app uses `TREASURER_DATABASE` to decide where the live SQLite file lives. `start.bat` defaults to `C:\TreasurerDB\Treasurer.db` for the live database and keeps a mirrored backup copy in a backup folder.
 
 If you want the database somewhere else, set `TREASURER_DATABASE` before launching it.
 
-You can also change the mirrored backup location from the app's Settings page. If you do not set one there, the launcher falls back to the automatic default backup path.
+You can also change the mirrored backup folder from the app's Settings page. The app will create the folder if it does not exist and store `Treasurer.backup.db` inside it. If you do not set one there, the launcher falls back to a default folder under your Documents area when possible, with OneDrive or the home folder used as backup fallbacks if needed.
 
 `start.bat` prefers `py -3` when available, so the machine should have Python 3.10 or newer installed.
 
