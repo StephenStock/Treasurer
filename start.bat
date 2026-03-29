@@ -18,6 +18,9 @@ if not exist "%LOCAL_DB_DIR%" (
     echo Using fallback local database folder.
 )
 
+set "EXIT_SIGNAL=%TEMP%\treasurer.exit"
+if exist "%EXIT_SIGNAL%" del /f /q "%EXIT_SIGNAL%" >nul 2>nul
+
 for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = [Regex]::Escape((Get-Location).Path); Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(python|pythonw)\.exe$' -and $_.CommandLine -and $_.CommandLine -match $root -and ($_.CommandLine -match 'flask(\.exe)?\s+--app\s+app\s+run' -or $_.CommandLine -match 'app\.py') } | Select-Object -ExpandProperty ProcessId"`) do (
     taskkill /PID %%P /F >nul 2>nul
 )
@@ -86,5 +89,5 @@ for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass
 echo.
 echo Treasurer is running.
 echo Use the Exit App button or press any key here to stop it.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$flaskPid = [int]%FLASK_PID%; while ($true) { if (-not (Get-Process -Id $flaskPid -ErrorAction SilentlyContinue)) { break } if ($Host.UI.RawUI.KeyAvailable) { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown'); try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:5000/app/exit' | Out-Null } catch {}; break } Start-Sleep -Milliseconds 200 }; while (Get-Process -Id $flaskPid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$flaskPid = [int]%FLASK_PID%; $signalPath = '%EXIT_SIGNAL%'; while ($true) { if (Test-Path -LiteralPath $signalPath) { break } if (-not (Get-Process -Id $flaskPid -ErrorAction SilentlyContinue)) { break } if ($Host.UI.RawUI.KeyAvailable) { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown'); try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:5000/app/exit' | Out-Null } catch {}; break } Start-Sleep -Milliseconds 200 }; if (Get-Process -Id $flaskPid -ErrorAction SilentlyContinue) { Stop-Process -Id $flaskPid -Force }; Remove-Item -LiteralPath $signalPath -Force -ErrorAction SilentlyContinue"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode Backup

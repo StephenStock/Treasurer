@@ -1,5 +1,6 @@
 import os
 import threading
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 
@@ -34,6 +35,17 @@ from .db import (
 
 
 main_bp = Blueprint("main", __name__)
+
+
+def _launcher_exit_signal_path() -> Path:
+    return Path(os.environ.get("TEMP") or tempfile.gettempdir()) / "treasurer.exit"
+
+
+def _signal_launcher_exit() -> None:
+    try:
+        _launcher_exit_signal_path().write_text(datetime.utcnow().isoformat(), encoding="utf-8")
+    except Exception:
+        pass
 
 
 @main_bp.app_context_processor
@@ -576,6 +588,7 @@ def _handle_app_exit():
         db.commit()
     finally:
         close_db()
+        _signal_launcher_exit()
 
     shutdown = request.environ.get("werkzeug.server.shutdown")
     if shutdown is not None:
