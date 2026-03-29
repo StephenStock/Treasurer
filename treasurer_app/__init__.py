@@ -16,7 +16,11 @@ from .db import (
     seed_meeting_schedule,
     seed_virtual_account_balances,
     seed_virtual_accounts,
+    seed_bank_ledger,
+    seed_cashbook_from_workbook,
+    seed_member_prepayments_from_workbook,
     backup_database,
+    seed_virtual_account_transfers_from_workbook,
     sync_database_files,
     consolidate_virtual_accounts,
     table_exists,
@@ -34,7 +38,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     )
     app.config.from_mapping(
         SECRET_KEY="change-me",
-        DATABASE=str(os.environ.get("TREASURER_DATABASE", default_database_path())),
+        DATABASE=str(default_database_path()),
         BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", "")),
     )
 
@@ -84,6 +88,10 @@ def create_app(test_config: dict | None = None) -> Flask:
                 ).fetchone()
             if current_period:
                 seed_virtual_account_balances(db, reporting_period_id=current_period["id"])
+                seed_bank_ledger(db, reporting_period_id=current_period["id"])
+                seed_cashbook_from_workbook(db, reporting_period_id=current_period["id"])
+                seed_member_prepayments_from_workbook(db, reporting_period_id=current_period["id"])
+                seed_virtual_account_transfers_from_workbook(db, reporting_period_id=current_period["id"])
             db.commit()
             try:
                 backup_database(db, Path(app.config["BACKUP_DATABASE"]))

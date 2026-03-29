@@ -27,6 +27,14 @@
       <strong>&pound;{{ "%.2f"|format(selected_account.total_out) }}</strong>
     </article>
     <article class="stat-card">
+      <span>Xfr In</span>
+      <strong>&pound;{{ "%.2f"|format(selected_account.transfer_in) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Xfr Out</span>
+      <strong>&pound;{{ "%.2f"|format(selected_account.transfer_out) }}</strong>
+    </article>
+    <article class="stat-card">
       <span>Closing</span>
       <strong>&pound;{{ "%.2f"|format(selected_account.closing_balance) }}</strong>
     </article>
@@ -57,8 +65,8 @@
               <td>{{ entry.transaction_date or "-" }}</td>
               <td>{{ entry.details }}</td>
               <td>{{ entry.category_name }}</td>
-              <td class="money-cell">{% if entry.direction == 'in' %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
-              <td class="money-cell">{% if entry.direction == 'out' %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
+              <td class="money-cell">{% if entry.direction in ['in', 'transfer_in'] %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
+              <td class="money-cell">{% if entry.direction in ['out', 'transfer_out'] %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
             </tr>
           {% endfor %}
           {% if not selected_account.entries %}

@@ -23,7 +23,7 @@
       <strong>&pound;{{ "%.2f"|format(expense_total) }}</strong>
     </article>
     <article class="stat-card">
-      <span>Net Result</span>
+      <span>Overall Movement</span>
       <strong>&pound;{{ "%.2f"|format(net_result) }}</strong>
     </article>
     <article class="stat-card">
@@ -33,73 +33,48 @@
   </section>
 
   <section class="statement-sheet-grid">
-    <section class="panel statement-panel">
-      <div class="panel-heading">
-        <div>
-          <h3>Income</h3>
-          <p class="section-note">Realised income from the bank allocations currently in the ledger.</p>
+    {% for section in statement_sections %}
+      <section class="panel statement-panel">
+        <div class="panel-heading">
+          <div>
+            <h3>{{ section.title }}</h3>
+            <p class="section-note">Calculated from the imported bank ledger and cashbook using the workbook statement layout.</p>
+          </div>
         </div>
-      </div>
 
-      <div class="table-scroll">
-        <table class="statement-table compact-ledger">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Description</th>
-              <th>Actual</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in income_rows %}
+        <div class="table-scroll">
+          <table class="statement-table compact-ledger">
+            <thead>
               <tr>
-                <td>{{ row.code }}</td>
-                <td>{{ row.display_name }}</td>
-                <td class="money-cell">&pound;{{ "%.2f"|format(row.total_amount) }}</td>
+                <th>Income</th>
+                <th class="money-cell">Actual</th>
+                <th>Expenditure</th>
+                <th class="money-cell">Actual</th>
               </tr>
-            {% endfor %}
-            <tr class="totals-row">
-              <td colspan="2">Income total</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(income_total) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel statement-panel">
-      <div class="panel-heading">
-        <div>
-          <h3>Expenditure</h3>
-          <p class="section-note">Realised expense lines, shown beside income to match the fixed statement layout.</p>
+            </thead>
+            <tbody>
+              {% set row_count = [section.income_rows|length, section.expense_rows|length]|max %}
+              {% for index in range(row_count) %}
+                {% set income_row = section.income_rows[index] if index < section.income_rows|length else none %}
+                {% set expense_row = section.expense_rows[index] if index < section.expense_rows|length else none %}
+                <tr>
+                  <td>{{ income_row.label if income_row else '' }}</td>
+                  <td class="money-cell">{% if income_row %}&pound;{{ "%.2f"|format(income_row.amount) }}{% endif %}</td>
+                  <td>{{ expense_row.label if expense_row else '' }}</td>
+                  <td class="money-cell">{% if expense_row %}&pound;{{ "%.2f"|format(expense_row.amount) }}{% endif %}</td>
+                </tr>
+              {% endfor %}
+              <tr class="totals-row">
+                <td>Income total</td>
+                <td class="money-cell">&pound;{{ "%.2f"|format(section.income_total) }}</td>
+                <td>Expenditure total</td>
+                <td class="money-cell">&pound;{{ "%.2f"|format(section.expense_total) }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </div>
-
-      <div class="table-scroll">
-        <table class="statement-table compact-ledger">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Description</th>
-              <th>Actual</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in expense_rows %}
-              <tr>
-                <td>{{ row.code }}</td>
-                <td>{{ row.display_name }}</td>
-                <td class="money-cell">&pound;{{ "%.2f"|format(row.total_amount) }}</td>
-              </tr>
-            {% endfor %}
-            <tr class="totals-row">
-              <td colspan="2">Expenditure total</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(expense_total) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+      </section>
+    {% endfor %}
   </section>
 
   <section class="panel statement-panel">
@@ -112,11 +87,23 @@
 
     <div class="statement-check-grid">
       <article class="statement-check-card">
+        <span>Opening bank balance</span>
+        <strong>{% if opening_bank_balance is not none %}&pound;{{ "%.2f"|format(opening_bank_balance) }}{% else %}-{% endif %}</strong>
+      </article>
+      <article class="statement-check-card">
         <span>Latest bank balance</span>
         <strong>{% if latest_bank_balance is not none %}&pound;{{ "%.2f"|format(latest_bank_balance) }}{% else %}-{% endif %}</strong>
       </article>
       <article class="statement-check-card">
-        <span>Income less expense</span>
+        <span>Bank receipts</span>
+        <strong>&pound;{{ "%.2f"|format(bank_receipts_total) }}</strong>
+      </article>
+      <article class="statement-check-card">
+        <span>Bank payments</span>
+        <strong>&pound;{{ "%.2f"|format(bank_payments_total) }}</strong>
+      </article>
+      <article class="statement-check-card">
+        <span>Overall movement</span>
         <strong>&pound;{{ "%.2f"|format(net_result) }}</strong>
       </article>
       <article class="statement-check-card">
@@ -142,6 +129,8 @@
             <th>Opening</th>
             <th>In</th>
             <th>Out</th>
+            <th>Xfr In</th>
+            <th>Xfr Out</th>
             <th>Closing</th>
           </tr>
         </thead>
@@ -152,11 +141,15 @@
               <td class="money-cell">&pound;{{ "%.2f"|format(account.opening_balance) }}</td>
               <td class="money-cell">&pound;{{ "%.2f"|format(account.total_in) }}</td>
               <td class="money-cell">&pound;{{ "%.2f"|format(account.total_out) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(account.transfer_in) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(account.transfer_out) }}</td>
               <td class="money-cell">&pound;{{ "%.2f"|format(account.closing_balance) }}</td>
             </tr>
           {% endfor %}
           <tr class="totals-row">
             <td>Total</td>
+            <td class="money-cell">-</td>
+            <td class="money-cell">-</td>
             <td class="money-cell">-</td>
             <td class="money-cell">-</td>
             <td class="money-cell">-</td>

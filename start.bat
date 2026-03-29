@@ -90,8 +90,5 @@ if not exist "%TREASURER_DATABASE%" (
 
 start "" http://127.0.0.1:5000/
 for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -PassThru -WindowStyle Hidden -WorkingDirectory (Get-Location).Path -FilePath '%PYTHON_EXE%' -ArgumentList @('-m','flask','--app','app','run','--debug','--no-reload'); $p.Id"`) do set "FLASK_PID=%%P"
-echo.
-echo Treasurer is running.
-echo Use the Exit App button or press any key here to stop it.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$flaskPid = [int]%FLASK_PID%; $signalPath = '%EXIT_SIGNAL%'; while ($true) { if (Test-Path -LiteralPath $signalPath) { break } if (-not (Get-Process -Id $flaskPid -ErrorAction SilentlyContinue)) { break } if ($Host.UI.RawUI.KeyAvailable) { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown'); try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:5000/app/exit' | Out-Null } catch {}; break } Start-Sleep -Milliseconds 200 }; if (Get-Process -Id $flaskPid -ErrorAction SilentlyContinue) { Stop-Process -Id $flaskPid -Force }; Remove-Item -LiteralPath $signalPath -Force -ErrorAction SilentlyContinue"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode Backup
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -WindowStyle Hidden -WorkingDirectory (Get-Location).Path -FilePath 'powershell' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0scripts\watch_treasurer_launch.ps1','-FlaskPid','%FLASK_PID%','-ExitSignalPath','%EXIT_SIGNAL%','-PrimaryDb','%TREASURER_DATABASE%','-BackupDb','%TREASURER_BACKUP_DATABASE%') | Out-Null"
+exit /b

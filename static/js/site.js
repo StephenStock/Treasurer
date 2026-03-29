@@ -288,6 +288,8 @@ document.querySelectorAll('[data-fill-input]').forEach((button) => {
   });
 });
 
+let appExitRequested = false;
+
 document.querySelectorAll('[data-exit-app]').forEach((button) => {
   button.addEventListener('click', async () => {
     const exitUrl = button.dataset.exitUrl || '/app/exit';
@@ -309,13 +311,19 @@ document.querySelectorAll('[data-exit-app]').forEach((button) => {
       status.classList.add('attention-banner-warning');
     }
 
-    void fetch(exitUrl, {
-      method: 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      keepalive: true,
-    });
+    if (!appExitRequested) {
+      appExitRequested = true;
+      const payload = new Blob([], { type: 'text/plain' });
+      if (!(navigator.sendBeacon && navigator.sendBeacon(exitUrl, payload))) {
+        void fetch(exitUrl, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          keepalive: true,
+        });
+      }
+    }
 
     window.setTimeout(() => {
       if (status) {

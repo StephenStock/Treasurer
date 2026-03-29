@@ -180,56 +180,156 @@ def _bank_page_context():
 
 def _statement_page_context():
     db = get_db()
-    category_rows = db.execute(
-        """
-        SELECT
-            lc.id,
-            lc.code,
-            lc.display_name,
-            lc.direction,
-            lc.sort_order,
-            COALESCE(SUM(bta.amount), 0) AS total_amount,
-            COUNT(DISTINCT bta.bank_transaction_id) AS transaction_count
-        FROM ledger_categories lc
-        LEFT JOIN bank_transaction_allocations bta ON bta.ledger_category_id = lc.id
-        LEFT JOIN bank_transactions bt ON bt.id = bta.bank_transaction_id
-        GROUP BY lc.id, lc.code, lc.display_name, lc.direction, lc.sort_order
-        ORDER BY lc.direction, lc.sort_order, lc.display_name
-        """
-    ).fetchall()
+    reporting_period_id = _current_reporting_period_id()
 
-    income_rows = []
-    expense_rows = []
-    income_total = 0.0
-    expense_total = 0.0
+    bank_totals = {
+        row["code"]: float(row["total_amount"] or 0)
+        for row in db.execute(
+            """
+            SELECT
+                lc.code,
+                COALESCE(SUM(bta.amount), 0) AS total_amount
+            FROM ledger_categories lc
+            LEFT JOIN bank_transaction_allocations bta ON bta.ledger_category_id = lc.id
+            LEFT JOIN bank_transactions bt
+              ON bt.id = bta.bank_transaction_id
+             AND bt.reporting_period_id = ?
+            WHERE bt.reporting_period_id = ? OR bt.id IS NULL
+            GROUP BY lc.code
+            """,
+            (reporting_period_id, reporting_period_id),
+        ).fetchall()
+    }
 
-    for row in category_rows:
-        item = {
-            "code": row["code"],
-            "display_name": row["display_name"],
-            "direction": row["direction"],
-            "total_amount": float(row["total_amount"] or 0),
-            "transaction_count": row["transaction_count"],
+    cash_totals = {
+        row["code"]: {
+            "money_in": float(row["money_in"] or 0),
+            "money_out": float(row["money_out"] or 0),
         }
-        if row["direction"] == "in":
-            income_rows.append(item)
-            income_total += item["total_amount"]
-        else:
-            expense_rows.append(item)
-            expense_total += item["total_amount"]
+        for row in db.execute(
+            """
+            SELECT
+                lc.code,
+                COALESCE(SUM(c.money_in), 0) AS money_in,
+                COALESCE(SUM(c.money_out), 0) AS money_out
+            FROM cashbook_entries c
+            LEFT JOIN ledger_categories lc ON lc.id = c.ledger_category_id
+            WHERE c.reporting_period_id = ?
+            GROUP BY lc.code
+            """,
+            (reporting_period_id,),
+        ).fetchall()
+    }
+
+    def bank(code: str) -> float:
+        return round(bank_totals.get(code, 0.0), 2)
+
+    def cash_in(code: str) -> float:
+        return round(cash_totals.get(code, {}).get("money_in", 0.0), 2)
+
+    def cash_out(code: str) -> float:
+        return round(cash_totals.get(code, {}).get("money_out", 0.0), 2)
+
+    def rows_with_total(definitions: list[tuple[str, float]]) -> tuple[list[dict[str, float | str]], float]:
+        rows = [{"label": label, "amount": round(amount, 2)} for label, amount in definitions]
+        return rows, round(sum(row["amount"] for row in rows), 2)
+
+    general_income_rows, general_income_total = rows_with_total(
+        [
+            ("Dining Fees", bank("DINING") + bank("VISITOR") + cash_in("DINING")),
+            ("Subscriptions", bank("SUBS") + cash_in("SUBS")),
+            ("Initiation Fees", bank("INITIATION")),
+            ("Chapter C of I Rent", bank("CHAPTER_LOI")),
+            ("SumUp", bank("SUMUP")),
+        ]
+    )
+    general_expense_rows, general_expense_total = rows_with_total(
+        [
+            ("Catering", bank("CATERER")),
+            ("UGLE", bank("UGLE")),
+            ("PGLE", bank("PGLE")),
+            ("Orsett Masonic Hall rent", bank("ORSETT")),
+            ("L of I Rent Woolmarket", bank("WOOLMKT")),
+            ("Tyler's Fee", cash_out("TYLER")),
+            ("Bank Charges", bank("BANK_CHARGES")),
+        ]
+    )
+
+    charity_income_rows, charity_income_total = rows_with_total(
+        [
+            ("Gavels", bank("GAVEL") + cash_in("GAVEL")),
+            ("Raffles", bank("RAFFLE") + cash_in("RAFFLE")),
+            ("Charity Donations", bank("DONATIONS_IN")),
+        ]
+    )
+    charity_expense_rows, charity_expense_total = rows_with_total(
+        [
+            ("Relief Chest", bank("RELIEF")),
+            ("Charity donations from Lodge Funds", bank("DONATIONS_OUT") + cash_out("DONATIONS_OUT")),
+        ]
+    )
+
+    benevolent_income_rows, benevolent_income_total = rows_with_total([])
+    benevolent_expense_rows, benevolent_expense_total = rows_with_total(
+        [
+            ("Widows Christmas gifts", bank("WIDOWS")),
+            ("Almoner's expenses", cash_out("ALMONER")),
+        ]
+    )
+
+    loi_income_rows, loi_income_total = rows_with_total(
+        [
+            ("Collections", bank("LOI")),
+        ]
+    )
+    loi_expense_rows, loi_expense_total = rows_with_total([])
 
     latest_balance = db.execute(
         """
         SELECT running_balance
         FROM bank_transactions
-        WHERE running_balance IS NOT NULL
+        WHERE reporting_period_id = ?
+          AND running_balance IS NOT NULL
         ORDER BY
             CASE WHEN transaction_date IS NULL OR transaction_date = '' THEN 1 ELSE 0 END,
             transaction_date DESC,
             id DESC
         LIMIT 1
-        """
+        """,
+        (reporting_period_id,),
     ).fetchone()
+
+    opening_bank_balance = db.execute(
+        """
+        SELECT running_balance
+        FROM bank_transactions
+        WHERE reporting_period_id = ?
+          AND is_opening_balance = 1
+        ORDER BY transaction_date, id
+        LIMIT 1
+        """,
+        (reporting_period_id,),
+    ).fetchone()
+
+    total_receipts = db.execute(
+        """
+        SELECT COALESCE(SUM(money_in), 0) AS total
+        FROM bank_transactions
+        WHERE reporting_period_id = ?
+          AND is_opening_balance = 0
+        """,
+        (reporting_period_id,),
+    ).fetchone()["total"]
+
+    total_payments = db.execute(
+        """
+        SELECT COALESCE(SUM(money_out), 0) AS total
+        FROM bank_transactions
+        WHERE reporting_period_id = ?
+          AND is_opening_balance = 0
+        """,
+        (reporting_period_id,),
+    ).fetchone()["total"]
 
     uncategorised_transactions = db.execute(
         """
@@ -237,20 +337,135 @@ def _statement_page_context():
         FROM bank_transactions bt
         LEFT JOIN bank_transaction_allocations bta ON bta.bank_transaction_id = bt.id
         WHERE bt.is_opening_balance = 0
+          AND bt.reporting_period_id = ?
           AND bta.id IS NULL
-        """
+        """,
+        (reporting_period_id,),
     ).fetchone()["total"]
 
-    balance_rows = virtual_account_report(db)
-    balance_total = sum(float(row["closing_balance"] or 0) for row in balance_rows)
+    opening_balances = {
+        row["code"]: float(row["opening_balance"] or 0)
+        for row in db.execute(
+            """
+            SELECT va.code, vab.opening_balance
+            FROM virtual_account_balances vab
+            JOIN virtual_accounts va ON va.id = vab.virtual_account_id
+            WHERE vab.reporting_period_id = ?
+            """,
+            (reporting_period_id,),
+        ).fetchall()
+    }
+
+    prepayment_totals = db.execute(
+        """
+        SELECT
+            COALESCE(SUM(subscription_prepayment), 0) AS subscription_total,
+            COALESCE(SUM(dining_prepayment), 0) AS dining_total
+        FROM member_prepayments
+        WHERE reporting_period_id = ?
+        """,
+        (reporting_period_id,),
+    ).fetchone()
+    prepayment_subs_total = float(prepayment_totals["subscription_total"] or 0)
+    prepayment_dining_total = float(prepayment_totals["dining_total"] or 0)
+
+    centenary_transfer_total = db.execute(
+        """
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM virtual_account_transfers vat
+        JOIN virtual_accounts to_account ON to_account.id = vat.to_virtual_account_id
+        WHERE vat.reporting_period_id = ?
+          AND to_account.code = 'CENTENARY'
+        """,
+        (reporting_period_id,),
+    ).fetchone()["total"]
+
+    balance_rows = []
+    for code, label, total_in, total_out, transfer_in, transfer_out in [
+        ("MAIN", "Main Account", general_income_total, general_expense_total, prepayment_subs_total + prepayment_dining_total, 0.0),
+        ("CHARITY", "Charity Account", charity_income_total, charity_expense_total, 0.0, 0.0),
+        ("GLASGOW_FRANK", "Glasgow/Frank", 0.0, 0.0, 0.0, float(centenary_transfer_total or 0)),
+        ("LOI", "Lodge of Instruction", loi_income_total, loi_expense_total, 0.0, 0.0),
+        ("PRE_SUBS", "Pre-Paid Subs", bank("PRE_SUBS"), 0.0, 0.0, prepayment_subs_total),
+        ("PRE_DINING", "Pre-Paid Dining", bank("PRE_DINING"), 0.0, 0.0, prepayment_dining_total),
+        ("BENEVOLENT", "Benevolent Fund", benevolent_income_total, benevolent_expense_total, 0.0, 0.0),
+        ("CENTENARY", "Centenary Fund", 0.0, 0.0, float(centenary_transfer_total or 0), 0.0),
+    ]:
+        opening = float(opening_balances.get(code, 0))
+        closing = round(opening + total_in - total_out + transfer_in - transfer_out, 2)
+        balance_rows.append(
+            {
+                "code": code,
+                "display_name": label,
+                "opening_balance": opening,
+                "total_in": round(total_in, 2),
+                "total_out": round(total_out, 2),
+                "transfer_in": round(transfer_in, 2),
+                "transfer_out": round(transfer_out, 2),
+                "closing_balance": closing,
+            }
+        )
+
+    balance_total = round(sum(float(row["closing_balance"] or 0) for row in balance_rows), 2)
 
     return {
-        "income_rows": income_rows,
-        "expense_rows": expense_rows,
-        "income_total": income_total,
-        "expense_total": expense_total,
-        "net_result": income_total - expense_total,
+        "statement_sections": [
+            {
+                "title": "General Fund Accounts",
+                "income_rows": general_income_rows,
+                "expense_rows": general_expense_rows,
+                "income_total": general_income_total,
+                "expense_total": general_expense_total,
+            },
+            {
+                "title": "Charity Account",
+                "income_rows": charity_income_rows,
+                "expense_rows": charity_expense_rows,
+                "income_total": charity_income_total,
+                "expense_total": charity_expense_total,
+            },
+            {
+                "title": "Benevolent Fund",
+                "income_rows": benevolent_income_rows,
+                "expense_rows": benevolent_expense_rows,
+                "income_total": benevolent_income_total,
+                "expense_total": benevolent_expense_total,
+            },
+            {
+                "title": "Lodge of Instruction",
+                "income_rows": loi_income_rows,
+                "expense_rows": loi_expense_rows,
+                "income_total": loi_income_total,
+                "expense_total": loi_expense_total,
+            },
+        ],
+        "income_total": round(
+            general_income_total + charity_income_total + benevolent_income_total + loi_income_total,
+            2,
+        ),
+        "expense_total": round(
+            general_expense_total + charity_expense_total + benevolent_expense_total + loi_expense_total,
+            2,
+        ),
+        "net_result": round(
+            (
+                general_income_total
+                + charity_income_total
+                + benevolent_income_total
+                + loi_income_total
+            )
+            - (
+                general_expense_total
+                + charity_expense_total
+                + benevolent_expense_total
+                + loi_expense_total
+            ),
+            2,
+        ),
         "latest_bank_balance": latest_balance["running_balance"] if latest_balance else None,
+        "opening_bank_balance": opening_bank_balance["running_balance"] if opening_bank_balance else None,
+        "bank_receipts_total": round(float(total_receipts or 0), 2),
+        "bank_payments_total": round(float(total_payments or 0), 2),
         "uncategorised_transactions": uncategorised_transactions,
         "balance_rows": balance_rows,
         "balance_total": balance_total,
