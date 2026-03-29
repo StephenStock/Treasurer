@@ -82,10 +82,10 @@ if not exist "%TREASURER_DATABASE%" (
 )
 
 start "" http://127.0.0.1:5000/
-for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -PassThru -WindowStyle Hidden -WorkingDirectory (Get-Location).Path -FilePath '%PYTHON_EXE%' -ArgumentList @('-m','flask','--app','app','run','--debug'); $p.Id"`) do set "FLASK_PID=%%P"
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -PassThru -WindowStyle Hidden -WorkingDirectory (Get-Location).Path -FilePath '%PYTHON_EXE%' -ArgumentList @('-m','flask','--app','app','run','--debug','--no-reload'); $p.Id"`) do set "FLASK_PID=%%P"
 echo.
 echo Treasurer is running.
 echo Press any key to stop it.
 pause >nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:5000/__shutdown' | Out-Null } catch {}; $deadline = (Get-Date).AddSeconds(15); while ((Get-Process -Id %FLASK_PID% -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }; if (Get-Process -Id %FLASK_PID% -ErrorAction SilentlyContinue) { taskkill /PID %FLASK_PID% /T /F >nul 2>nul }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:5000/__shutdown' | Out-Null } catch {}; Start-Sleep -Seconds 2; if (Get-Process -Id %FLASK_PID% -ErrorAction SilentlyContinue) { Stop-Process -Id %FLASK_PID% -Force -ErrorAction SilentlyContinue }"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\sync_treasurer_db.ps1" -PrimaryDb "%TREASURER_DATABASE%" -BackupDb "%TREASURER_BACKUP_DATABASE%" -Mode Backup
