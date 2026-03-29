@@ -25,7 +25,7 @@ This will:
 3. Create the local SQLite database on first run
 4. Start the development server at `http://127.0.0.1:5000`
 
-`start.bat` reads `config.local` first. Put `TREASURER_DATABASE=\\DEN\TreasurerDB\Treasurer.db` in that file on both PCs so they point at the same shared live database. If `config.local` is missing, it falls back to `C:\TreasurerDB\Treasurer.db`.
+`start.bat` reads `config.local` first. For now, treat that file as the local machine-specific hardcode for the live database path. If you put `TREASURER_DATABASE=\\DEN\TreasurerDB\Treasurer.db` in it, that machine will use the shared live database. If `config.local` is missing, it falls back to `C:\TreasurerDB\Treasurer.db`.
 
 Use `config.local.example` as the template for the file.
 

@@ -1,6 +1,6 @@
 # Copy this file to config.local and edit the values for your machine.
-# Both PCs should point TREASURER_DATABASE at the same shared live DB.
+# Treat it as the machine-specific hardcode for the live DB path.
+# If this machine uses the shared live DB, point TREASURER_DATABASE at the UNC path.
 
 TREASURER_DATABASE=\\DEN\TreasurerDB\Treasurer.db
 # TREASURER_BACKUP_DATABASE=C:\Users\YourName\Documents\Treasurer Backups\Treasurer.backup.db
-# If you use start-shared.bat, you do not need a config.local file for the live DB path.

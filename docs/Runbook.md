@@ -74,7 +74,8 @@ Important local files:
 ### Database override
 
 - Create a local `config.local` file next to `start.bat`
-- Set `TREASURER_DATABASE` in that file to the shared UNC path you want both PCs to use
+- Treat `config.local` as the machine-specific hardcode for the live path
+- Set `TREASURER_DATABASE` in that file to the shared UNC path you want that machine to use
 - Set `TREASURER_BACKUP_DATABASE` if you want the mirrored backup somewhere else
 - The value can be either a folder path or a full `.db` file path; the app will use the folder and create `Treasurer.backup.db` inside it
 - The Settings page includes a backup folder field for day-to-day changes
