@@ -330,6 +330,18 @@ button,
   cursor: not-allowed;
 }
 
+.button.is-exiting {
+  background: var(--warning-bg);
+  border-color: var(--warning-text);
+  color: var(--warning-text);
+}
+
+.attention-banner-warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: rgba(123, 66, 17, 0.18);
+}
+
 .stat-card span {
   display: block;
   color: var(--muted);

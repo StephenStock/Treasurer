@@ -298,9 +298,12 @@ document.querySelectorAll('[data-exit-app]').forEach((button) => {
     }
 
     button.disabled = true;
-    button.textContent = 'Stopping...';
+    button.textContent = 'Exit requested';
+    button.classList.add('is-exiting');
     if (status) {
-      status.textContent = 'Saving a final backup and stopping the app. You can close this tab when it finishes.';
+      status.textContent = 'Exit requested. Saving a final backup and stopping the app now.';
+      status.classList.remove('attention-banner-ok');
+      status.classList.add('attention-banner-warning');
     }
 
     void fetch(exitUrl, {
@@ -313,7 +316,7 @@ document.querySelectorAll('[data-exit-app]').forEach((button) => {
 
     window.setTimeout(() => {
       if (status) {
-        status.textContent = 'Treasurer should be stopped now. You can close this tab.';
+        status.textContent = 'Treasurer is stopping or has stopped. You can close this tab now.';
       }
       window.close();
     }, 1500);
