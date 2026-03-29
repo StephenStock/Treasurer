@@ -274,3 +274,16 @@ if (reportToggle && headerTop) {
     reportToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
   });
 }
+
+document.querySelectorAll('[data-fill-input]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const inputName = button.dataset.fillInput;
+    const inputValue = button.dataset.fillValue || '';
+    const input = inputName ? document.querySelector(`[name="${inputName}"]`) : null;
+
+    if (input) {
+      input.value = inputValue;
+      input.focus();
+    }
+  });
+});

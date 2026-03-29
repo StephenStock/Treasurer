@@ -30,6 +30,17 @@
           value="{{ backup_folder_path or '' }}"
           placeholder="C:\\Users\\YourName\\Documents\\Treasurer Backups"
         >
+        <div class="settings-inline-actions">
+          <button
+            type="button"
+            class="button settings-helper-button"
+            data-fill-input="backup_folder_path"
+            data-fill-value="{{ suggested_backup_folder_path }}"
+          >
+            Use suggested folder
+          </button>
+          <span class="section-note">Suggested: {{ suggested_backup_folder_path }}</span>
+        </div>
       </div>
 
       <div class="settings-divider"></div>

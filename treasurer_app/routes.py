@@ -1010,11 +1010,12 @@ def forms():
 def settings():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
+    suggested_backup_folder_path = str(resolve_backup_folder_path(Path(current_app.config["DATABASE"])))
     backup_folder_path = get_app_setting(db, APP_SETTING_BACKUP_FOLDER)
     if backup_folder_path is None:
         backup_folder_path = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
     if backup_folder_path is None:
-        backup_folder_path = str(resolve_backup_folder_path(Path(current_app.config["DATABASE"])))
+        backup_folder_path = suggested_backup_folder_path
     elif backup_folder_path.endswith(".db"):
         backup_folder_path = str(Path(backup_folder_path).parent)
 
@@ -1077,6 +1078,7 @@ def settings():
         "settings.html",
         active_page="settings",
         backup_folder_path=backup_folder_path,
+        suggested_backup_folder_path=suggested_backup_folder_path,
         meeting_schedule=_meeting_schedule(),
         virtual_accounts=virtual_account_report(db),
     )

@@ -646,6 +646,19 @@ table {
   font-size: 0.95rem;
 }
 
+.settings-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.settings-helper-button {
+  min-height: 2.2rem;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.88rem;
+}
+
 .settings-divider {
   height: 1px;
   background: rgba(127, 29, 29, 0.16);
@@ -916,6 +929,15 @@ th {
   }
 
   .backup-actions .button {
+    width: 100%;
+  }
+
+  .settings-inline-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-helper-button {
     width: 100%;
   }
 
