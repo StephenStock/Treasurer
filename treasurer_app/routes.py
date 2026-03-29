@@ -563,8 +563,7 @@ def dashboard():
     )
 
 
-@main_bp.post("/app/exit")
-def exit_app():
+def _handle_app_exit():
     db = get_db()
     backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(Path(current_app.config["DATABASE"])))
 
@@ -585,6 +584,11 @@ def exit_app():
     threading.Timer(2.0, lambda: os._exit(0)).start()
 
     return {"ok": True, "message": "Treasurer is stopping. You can close this tab now."}
+
+
+@main_bp.post("/app/exit")
+def exit_app():
+    return _handle_app_exit()
 
 
 @main_bp.post("/backup/restore")
@@ -1139,16 +1143,4 @@ def settings():
 
 @main_bp.post("/__shutdown")
 def shutdown_app():
-    db = get_db()
-    backup_path = current_app.config.get("BACKUP_DATABASE")
-    if backup_path:
-        try:
-            backup_database(db, Path(backup_path))
-        except Exception:
-            pass
-
-    shutdown = request.environ.get("werkzeug.server.shutdown")
-    if shutdown is None:
-        return "Shutdown unavailable.", 500
-    shutdown()
-    return "Shutting down."
+    return _handle_app_exit()
