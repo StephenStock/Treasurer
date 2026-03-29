@@ -1,3 +1,5 @@
+import os
+import threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -579,6 +581,8 @@ def exit_app():
     shutdown = request.environ.get("werkzeug.server.shutdown")
     if shutdown is not None:
         shutdown()
+
+    threading.Timer(2.0, lambda: os._exit(0)).start()
 
     return {"ok": True, "message": "Treasurer is stopping. You can close this tab now."}
 
