@@ -264,3 +264,13 @@ wireTableSearch('#memberPageSearch', '#memberPageTable tr');
 document.querySelectorAll('.bank-category-select[data-autosubmit="true"]').forEach((select) => {
   select.dataset.previousValue = select.value;
 });
+
+const reportToggle = document.querySelector('.report-toggle');
+const topNav = document.querySelector('.top-nav');
+
+if (reportToggle && topNav) {
+  reportToggle.addEventListener('click', () => {
+    const isOpen = topNav.classList.toggle('reports-open');
+    reportToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+}

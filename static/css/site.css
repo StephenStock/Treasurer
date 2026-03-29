@@ -46,15 +46,9 @@ body {
 .site-header-top {
   display: flex;
   justify-content: space-between;
-  align-items: end;
+  align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
-}
-
-.header-meta {
-  display: grid;
-  justify-items: end;
-  gap: 0.5rem;
 }
 
 .site-header h1,
@@ -92,27 +86,7 @@ button,
   margin: 0.35rem 0 0;
   max-width: 34rem;
   color: var(--muted);
-  text-align: right;
-}
-
-.user-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  padding: 0.45rem 0.8rem;
-  border-radius: 999px;
-  background: rgba(255, 250, 241, 0.82);
-  border: 1px solid rgba(127, 29, 29, 0.12);
-  color: var(--muted);
-  font-family: "Segoe UI", Tahoma, sans-serif;
-}
-
-.user-chip a {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
+  text-align: left;
 }
 
 .top-nav {
@@ -128,30 +102,14 @@ button,
   align-items: flex-start;
 }
 
-.nav-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.nav-menu summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.nav-menu summary::-webkit-details-marker {
-  display: none;
-}
-
-.nav-menu-list {
+.report-nav-row {
   display: none;
   flex-wrap: wrap;
   gap: 0.5rem;
-  min-width: 0;
-  padding-left: 0;
+  margin-left: 0.25rem;
 }
 
-.nav-menu[open] .nav-menu-list {
+.top-nav.reports-open .report-nav-row {
   display: flex;
 }
 
@@ -169,6 +127,18 @@ button,
 .nav-menu-item:hover,
 .nav-menu-item:focus {
   background: rgba(127, 29, 29, 0.08);
+}
+
+.nav-menu-item.is-active {
+  color: #fff7f3;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.report-toggle[aria-expanded="true"] {
+  color: #fff7f3;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .nav-link {
