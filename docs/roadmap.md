@@ -22,7 +22,6 @@ Build a maintainable web app for lodge treasury administration that can later be
 - Flask app structure
 - Local launcher
 - SQLite local default
-- PostgreSQL support
 - Seed data
 - Dashboard shell
 - Documentation and specs
@@ -77,7 +76,6 @@ Status:
 
 ### Phase 6: Member services
 
-- Member login
 - View dues status
 - Book meals
 - Submit queries or updates
@@ -99,7 +97,6 @@ Status:
 
 - Formalize the local-first product pivot around the business continuity spec
 - Define a spreadsheet fallback export pack for treasury operations
-- Decide whether AWS remains only as an optional recovery/demo environment
 - Define the target for a packaged local Windows app
 - Continue improving inline-save UX across operational pages
 - Build out reconciliation checks and exception handling

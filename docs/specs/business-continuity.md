@@ -12,9 +12,9 @@ Current preferred direction:
 - single-user or single-custodian
 - SQLite as the normal data store
 - spreadsheet export as a first-class fallback
-- no mandatory AWS, hosted PostgreSQL, or public web dependency
+- no mandatory external hosting or public web dependency
 
-The hosted AWS deployment has been valuable as a learning exercise and as a proof that the app can run in production-style infrastructure. It is no longer the preferred operating model for the product itself.
+The previous deployment model has been valuable as a learning exercise and as a proof that the app can run in production-style infrastructure. It is no longer the preferred operating model for the product itself.
 
 ## Problem
 
@@ -25,7 +25,7 @@ The risk is not only software failure. The larger risk is operational fragility:
 - one person understands the system deeply
 - hosting, deploy, and recovery depend on technical knowledge
 - successors are more likely to understand a spreadsheet than a hosted web app
-- external dependencies such as AWS, domains, and credentials can break continuity even if the code is stable
+- external dependencies such as domains and credentials can break continuity even if the code is stable
 
 Business continuity must therefore be treated as a primary design goal, not as a later hardening task.
 
@@ -62,7 +62,7 @@ That means the preferred direction is now:
 - a treasurer's aid rather than a multi-role administrative platform
 - continued use of Hermes for secretary and membership management
 - continued use of Microsoft Forms for public dining or meal booking
-- the 5217 app focusing on treasury-specific workflows that are not already well served elsewhere
+- the Treasurer app focusing on treasury-specific workflows that are not already well served elsewhere
 - a local desktop-style workflow rather than a permanently hosted web service
 
 ## Users
@@ -71,7 +71,7 @@ Primary users under this continuity model:
 
 - Current treasurer
 - Future treasurer with limited technical skill
-- Lodge or chapter officer acting as system custodian
+- chapter officer acting as system custodian
 - A cautious non-developer who may need to recover data or continue work after a failure
 
 ## Goals
@@ -145,7 +145,7 @@ Preferred mitigation:
 
 - do not require hosting for normal use
 - make the normal operating model local-first
-- treat hosted deployment as optional or temporary
+- treat any non-local deployment as optional or temporary
 
 Minimum requirements:
 
@@ -250,4 +250,4 @@ The likely implementation work after agreeing this spec is:
 - Should export generation be manual, scheduled, or part of month-end workflow?
 - Which current features are genuinely treasury-essential, and which are convenience features?
 - Should the project formally drop member-facing and multi-role ambitions now, or only defer them?
-- Should AWS be retained only as an optional recovery/demo environment, or removed entirely from the intended operating model?
+- Should any non-local recovery/demo environment exist at all, or should the project stay purely local?

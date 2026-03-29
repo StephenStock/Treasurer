@@ -24,7 +24,7 @@ ws_setup["B4"] = "Amount"
 # Add a list of categories starting in column D
 ws_setup["D1"] = "Categories"
 categories = [
-    "Lodge Funds",
+    "Treasurer Funds",
     "Charity",
     "Benevolent Funds",
     "LOI",
@@ -75,7 +75,7 @@ ws_trans.append(["Date", "Description", "Amount", "Category", "Payment Method"])
 ws_members = wb.create_sheet("Members")
 ws_members.append(["Member ID", "Name", "Sub Account"])
 # Example member
-ws_members.append([1, "John Doe", "Lodge Funds"])
+ws_members.append([1, "John Doe", "Treasurer Funds"])
 
 # ---------------------
 # Summary Sheet
@@ -83,7 +83,7 @@ ws_members.append([1, "John Doe", "Lodge Funds"])
 ws_summary = wb.create_sheet("Summary")
 ws_summary.append(["Category", "Total"])
 # Example formulas (these assume you have bank data and manual entries in Transactions)
-ws_summary.append(["Lodge Funds", '=SUMIF(Transactions!D:D, "Lodge Funds", Transactions!C:C)'])
+ws_summary.append(["Treasurer Funds", '=SUMIF(Transactions!D:D, "Treasurer Funds", Transactions!C:C)'])
 ws_summary.append(["Charity", '=SUMIF(Transactions!D:D, "Charity", Transactions!C:C)'])
 ws_summary.append(["Benevolent Funds", '=SUMIF(Transactions!D:D, "Benevolent Funds", Transactions!C:C)'])
 ws_summary.append(["LOI", '=SUMIF(Transactions!D:D, "LOI", Transactions!C:C)'])
@@ -93,6 +93,6 @@ ws_summary.append(["Gavel Collection", '=SUMIF(Transactions!D:D, "Gavel Collecti
 ws_summary.append(["Raffle Collection", '=SUMIF(Transactions!D:D, "Raffle Collection", Transactions!C:C)'])
 
 # Save the workbook
-output_filename = "LodgeAccounts_Template.xlsx"
+output_filename = "TreasurerAccounts_Template.xlsx"
 wb.save(output_filename)
 print(f"Template saved as {output_filename}")

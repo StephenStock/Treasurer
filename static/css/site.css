@@ -237,24 +237,6 @@ button,
   background: var(--accent-soft);
 }
 
-.login-form {
-  display: grid;
-  gap: 1rem;
-  max-width: 28rem;
-}
-
-.login-form label {
-  display: grid;
-  gap: 0.45rem;
-  color: var(--muted);
-  font-family: "Segoe UI", Tahoma, sans-serif;
-  font-size: 0.95rem;
-}
-
-.login-form input {
-  width: 100%;
-}
-
 .attention-banner {
   margin: 0;
   padding: 0.8rem 0.9rem;

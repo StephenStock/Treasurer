@@ -6,7 +6,7 @@ Living reference
 
 ## Purpose
 
-Translate the current spreadsheet workflow into a clear set of software requirements for the Lodge Treasurer web application.
+Translate the current spreadsheet workflow into a clear set of software requirements for the Treasurer web application.
 
 ## Source workbook reviewed
 
@@ -242,7 +242,7 @@ Expenditure categories inferred from `Statement`:
 - UGLE
 - PGLE
 - Orsett Masonic Hall rent
-- Lodge of Instruction rent at Woolmarket
+- LOI rent at Woolmarket
 - Tyler fee
 - Bank charges
 
@@ -292,9 +292,8 @@ Requirements:
 
 ### Security
 
-- Treasurer and secretary areas should require login
-- Member-facing access should be limited to each member's own information
-- Sensitive financial screens should not be public
+- Sensitive financial screens should be clearly labelled
+- Operational access should remain straightforward for the treasurer
 
 ## Proposed application modules
 
@@ -313,15 +312,13 @@ Based on the workbook, the app should eventually include:
 
 To keep scope controlled, build in this order:
 
-1. Authentication and roles
-2. Members and member types
-3. Dues tracking
-4. Events and dining attendance
-5. Cash entry by meeting
-6. Bank transaction ledger and categorisation
-7. Reconciliation dashboard
-8. Annual statement reporting
-9. Member-facing self-service
+1. Members and member types
+2. Dues tracking
+3. Events and dining attendance
+4. Cash entry by meeting
+5. Bank transaction ledger and categorisation
+6. Reconciliation dashboard
+7. Annual statement reporting
 
 ## Immediate database implications
 
@@ -354,7 +351,6 @@ These points are inferred from the workbook and should be confirmed before imple
 
 Parts of this requirements set are now live in the app, including:
 
-- internal-user authentication
 - members and dues records
 - bank import and categorisation
 - cash entry by meeting

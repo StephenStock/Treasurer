@@ -145,7 +145,7 @@ Required fields:
 
 ## Outcome notes
 
-This slice has been implemented and then extended by later work. The live app now also includes authentication, bank workflows, cash workflows, and reporting screens that go beyond the original scope of this spec.
+This slice has been implemented and then extended by later work. The live app now also includes bank workflows, cash workflows, and reporting screens that go beyond the original scope of this spec.
 
 ## Deferred items
 
@@ -165,6 +165,5 @@ This slice has been implemented and then extended by later work. The live app no
 
 After this data-model slice, the next likely implementation should be one of:
 
-1. Authentication
-2. Members list and member detail screens
-3. Dues editing workflow
+1. Members list and member detail screens
+2. Dues editing workflow

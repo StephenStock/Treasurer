@@ -1,8 +1,8 @@
-# 5217 Runbook
+# Treasurer Runbook
 
 ## Purpose
 
-This runbook is the single operational reference for the 5217 app. It replaces the earlier separate deployment, PostgreSQL, subdomain, and handoff notes.
+This runbook is the single operational reference for the local Treasurer app.
 
 ## Operating direction
 
@@ -13,26 +13,19 @@ The current preferred operating model is:
 - single active treasurer or custodian
 - spreadsheet export as the continuity fallback
 
-AWS and hosted PostgreSQL are now treated as legacy or optional operating paths, not the primary target architecture.
-
 ## Current system summary
 
-- Repo: `StephenStock/5217`
+- Repo: `StephenStock/Treasurer`
 - App stack: Flask, server-rendered templates, light vanilla JavaScript
 - Preferred operating mode: local Windows app
 - Preferred database: local SQLite
-- Production host: AWS Lightsail instance `lodge-app`
-- Production app path: `/home/ubuntu/5217`
-- Production service: `5217.service`
-- App process: `python -m gunicorn --bind 0.0.0.0:5000 app:app`
-- Production database: Lightsail PostgreSQL in `eu-west-2`
-- Local default database: SQLite at `%LOCALAPPDATA%\5217\Lodge.db`
-- Main public website: `https://5217.org.uk/`
-- Intended app host: `https://app.5217.org.uk/`
+- Local database path: `instance\Treasurer.db` inside the project folder
+- Local launch script: `start.bat`
+- Main docs: `README.md` and `docs/specs/`
 
 ## What has been delivered
 
-The app now includes:
+The app includes:
 
 - Authentication with seeded internal roles
 - Members and dues screens
@@ -42,116 +35,52 @@ The app now includes:
 - Cash settlement into the bank ledger
 - Multiple cash deposits per meeting
 - Workbook import support for both `Bank` and `Cash`
-- Push-to-deploy flow from Windows to Lightsail
-
-The production repo, deploy scripts, and server paths have been renamed from `Treasurer` to `5217`. A few historic identifiers remain intentionally, mainly `TREASURER_DATABASE_URL`.
-
-The hosted deployment remains useful as a reference environment, but continuity planning now favors local use over hosted operation.
+- Inline-save behavior on operational pages
 
 ## Repository and runtime layout
 
 Important local files:
 
 - `start.bat`: local Windows launcher
-- `deploy.bat`: legacy and optional Windows deploy entry point for Lightsail
-- `deploy/deploy.sh`: server-side deploy script
-- `deploy/5217.service`: systemd unit installed on the server
+- `README.md`: quick-start and local setup summary
+- `docs/Runbook.md`: this operational guide
+- `docs/specs/`: feature and business-rule documents
 - `treasurer_app/schema.sql`: canonical schema
-
-Important production paths:
-
-- App checkout: `/home/ubuntu/5217`
-- Virtual environment: `/home/ubuntu/5217/.venv`
-- Systemd unit: `/etc/systemd/system/5217.service`
-- Preferred env file: `/etc/5217/5217.env`
-- Legacy env file still accepted during transition: `/etc/treasurer/treasurer.env`
 
 ## Local development
 
 ### Default behavior
 
-- `start.bat` uses the local Python launcher on Windows
-- If no PostgreSQL DSN is supplied, the app uses SQLite
-- The live local SQLite database is stored outside OneDrive in `%LOCALAPPDATA%\5217\Lodge.db`
-
-### Local database options
-
-- SQLite is the safe default for local work
-- PostgreSQL can be selected by setting `TREASURER_DATABASE_URL`
-
-Example PostgreSQL DSN shape:
-
-```text
-postgresql://USER:PASSWORD@HOST:5432/DATABASE
-```
-
-## Local-first deployment
-
-### Preferred everyday use
-
-- Run `start.bat` on the Windows machine that is acting as the active treasurer machine
-- Keep the live database local
-- Produce regular backup and export packs for handover
+- `start.bat` creates or reuses a local virtual environment
+- The launcher installs the Python dependencies if needed
+- If the SQLite database does not yet contain the `users` table, the app initializes the schema and seed data
+- The app starts at `http://127.0.0.1:5000`
 
 ### Local database expectations
 
 - SQLite is the normal and preferred storage engine
-- The active local database should live at `%LOCALAPPDATA%\5217\Lodge.db` unless deliberately overridden
+- The active local database should live at `instance\Treasurer.db` inside the project folder unless deliberately overridden
 - The live database should not be stored inside OneDrive
 
-## Optional hosted deployment
+### Database override
 
-Hosted deployment is no longer the preferred product direction, but the path still exists if needed for testing, demonstration, or temporary remote access.
+- Set `TREASURER_DATABASE` if you want the SQLite file somewhere else
+- The value should be a file path, not a server connection string
 
-### Legacy deploy flow
+## Backups and restore
 
-1. Commit locally
-2. Push to `origin/main`
-3. Run `.\deploy.bat`
+### Manual backup routine
 
-### What `deploy.bat` does
+- Copy the SQLite database file to a safe backup location after important work
+- Keep a dated copy before major imports or schema changes
+- Treat the workbook export pack as a second continuity layer
 
-- Connects to Lightsail by SSH
-- Ensures the server checkout exists at `/home/ubuntu/5217`
-- Forces the server checkout to `origin/main`
-- Runs `deploy/deploy.sh`
+### Restore path
 
-### What `deploy/deploy.sh` does
-
-- Confirms the app env file is available
-- Rebuilds `.venv` if it is missing or broken
-- Installs Python dependencies
-- Ensures the schema exists
-- Installs the current systemd unit file
-- Reloads systemd
-- Restarts `5217.service`
-- Checks service status
-
-### Hosted secrets
-
-- Keep secrets out of the repo
-- Store the production DSN in `/etc/5217/5217.env`
-- During transition, `/etc/treasurer/treasurer.env` is still supported
-
-Expected env variable:
-
-```text
-TREASURER_DATABASE_URL=postgresql://...
-```
-
-## Database notes
-
-### Hosted database
-
-- The live app uses Lightsail PostgreSQL
-- The app server and database should stay in the same AWS region
-- While the database is not public, only approved AWS-side resources can connect
-
-### Local and temporary hosts
-
-- The project should normally run against SQLite locally
-- A local or LAN PostgreSQL host is possible for testing, but it is no longer the primary deployment target
-- Do not keep a live SQLite database inside OneDrive
+- Close the app
+- Replace the SQLite database file with the known-good backup
+- Start the app again with `start.bat`
+- Confirm the dashboard and bank/cash pages load correctly
 
 ## Workbook import and migration status
 
@@ -163,19 +92,17 @@ TREASURER_DATABASE_URL=postgresql://...
 
 ### Cash workbook import
 
-- Cash rows from the workbook have already been imported into the live PostgreSQL database
-- The current importer reads the `Cash` sheet and creates meeting-linked cash entries
+- Cash rows from the workbook can be imported into the cash ledger
+- Imported cash rows are linked to the meeting workflow used by the app
 
 ### Spreadsheet-to-app settlement model
 
-The workbook behavior is now represented this way:
+The workbook behavior is represented this way:
 
 - Cash categorisation is recorded in the cash ledger
 - Bank deposits are recorded separately in the bank ledger
 - A meeting can be settled by one or more deposits
 - Those deposits link back to the meeting without duplicating the original cash categorisation
-
-This preserves the running bank statement while avoiding double counting.
 
 ## Current financial model highlights
 
@@ -217,63 +144,36 @@ This preserves the running bank statement while avoiding double counting.
 - Bank Charges
 - Widows
 
-## Editing and save behavior
-
-The app is moving toward inline-save behavior for operational pages:
-
-- Editing a cash entry now saves in place
-- The page no longer jumps back to the top after a cash edit save
-- A small inline tick or cross indicates success or failure
-- Cash settlement actions also update in place
-
-The same pattern should be used for similar edit flows elsewhere as they are refined.
-
-## Hosted web access
-
-Current state:
-
-- The app is live on Lightsail by IP
-- The intended public hostname remains `app.5217.org.uk`
-- The root website at `5217.org.uk` remains the WordPress public site
-
-These are now optional infrastructure steps rather than required roadmap items:
-
-1. Point `app.5217.org.uk` at the Lightsail static IP
-2. Add nginx in front of the Flask service
-3. Verify plain HTTP routing
-4. Add HTTPS
-5. Keep public members on `/forms` and keep admin routes private
-
 ## Operational checks
 
-### After a deploy
+### After a local launch
 
 Confirm:
 
-- the server checkout is on the expected commit
-- `5217.service` is active
 - the app loads
-- bank and cash pages still render
-- the current env file still resolves `TREASURER_DATABASE_URL`
+- bank and cash pages render
+- the SQLite database exists in the expected location
+- the dashboard and operational pages still load correctly
 
 ### After schema-affecting changes
 
 Confirm:
 
 - the app starts cleanly
-- new tables or indexes exist in PostgreSQL
-- existing workbook-imported data still renders
+- the seeded data still renders
+- workbook-imported data still renders correctly
 - cash settlement behavior still reconciles correctly
 
 ## Known transitional items
 
-- `TREASURER_DATABASE_URL` remains the environment variable name
-- legacy env-file fallback is still present in deploy logic
-- the public subdomain and HTTPS are still pending if hosted access is kept
-- the preferred packaging target has shifted toward a local packaged Windows app
+- `TREASURER_DATABASE` is the current database override variable
+- the preferred packaging target is a local Windows workflow
+- export pack generation and reconciliation checks are still being tightened
 
 ## Documentation policy
 
-- Keep this runbook as the single source of truth for operations and environment setup
+- Keep this runbook as the single source of truth for local runtime and recovery setup
 - Keep feature intent and business rules in `docs/specs/`
 - Avoid creating one-off operational notes when the content belongs here
+
+

@@ -1,6 +1,6 @@
 from datetime import date
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from .db import (
     _dues_status,
@@ -14,8 +14,7 @@ from .db import (
     replace_bank_transaction_allocations,
     seed_meeting_schedule,
     seed_virtual_account_balances,
-    seed_virtual_accounts,
-    seed_virtual_account_category_map,
+    consolidate_virtual_accounts,
     virtual_account_report,
     table_exists,
 )
@@ -37,27 +36,15 @@ def inject_balance_nav_accounts():
 
 def _bank_page_context():
     db = get_db()
-    if db.backend == "postgres":
-        allocation_summary_sql = """
-            COALESCE(
-                STRING_AGG(
-                    lc.display_name || '|' || TO_CHAR(bta.amount, 'FM999999990.00'),
-                    '||'
-                    ORDER BY lc.display_name
-                ),
-                ''
-            ) AS allocation_summary
-        """
-    else:
-        allocation_summary_sql = """
-            COALESCE(
-                GROUP_CONCAT(
-                    lc.display_name || '|' || printf('%.2f', bta.amount),
-                    '||'
-                ),
-                ''
-            ) AS allocation_summary
-        """
+    allocation_summary_sql = """
+        COALESCE(
+            GROUP_CONCAT(
+                lc.display_name || '|' || printf('%.2f', bta.amount),
+                '||'
+            ),
+            ''
+        ) AS allocation_summary
+    """
 
     categories = db.execute(
         """
@@ -413,12 +400,6 @@ def _members_page_context():
 
 @main_bp.route("/")
 def dashboard():
-    if g.get("current_user") is None:
-        return render_template(
-            "home_public.html",
-            active_page="home",
-        )
-
     db = get_db()
 
     stats = {
@@ -957,6 +938,7 @@ def settings():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
     seed_virtual_account_balances(db, reporting_period_id)
+    consolidate_virtual_accounts(db)
 
     if request.method == "POST":
         for meeting in _meeting_schedule():

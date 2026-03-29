@@ -15,7 +15,6 @@ This spec covers:
 - Flask application setup
 - Local launcher and environment handling
 - SQLite local default
-- PostgreSQL support
 - Starter schema
 - Seed data
 - Basic dashboard page
@@ -39,16 +38,16 @@ This spec does not cover:
 ## Current implementation notes
 
 - App uses Flask with an application factory
-- App supports both SQLite and PostgreSQL
-- Local default storage is `%LOCALAPPDATA%\\5217\\Lodge.db`
-- PostgreSQL is selected by `TREASURER_DATABASE_URL`
-- Seed data includes users, members, dues, events, bookings, and messages
+- App uses SQLite for its local database
+- Local default storage is `instance\\Treasurer.db` inside the project folder
+- The database file can be overridden with `TREASURER_DATABASE`
+- Seed data includes members, dues, events, bookings, and messages
 - UI is server-rendered with vanilla JavaScript for light interactivity
 
 ## Acceptance criteria
 
 - The repo contains a working Flask app structure
-- The database schema can be initialized against SQLite and PostgreSQL
+- The database schema can be initialized against SQLite
 - The seeded database is enough to render a meaningful dashboard
 - The project can be launched with `start.bat`
 - The project has a docs structure for future feature specs
