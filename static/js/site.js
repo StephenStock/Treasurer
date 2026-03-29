@@ -292,14 +292,17 @@ document.querySelectorAll('[data-exit-app]').forEach((button) => {
   button.addEventListener('click', async () => {
     const exitUrl = button.dataset.exitUrl;
     const status = document.querySelector('[data-exit-message]');
+    const exitButtons = document.querySelectorAll('[data-exit-app]');
 
     if (!exitUrl) {
       return;
     }
 
-    button.disabled = true;
-    button.textContent = 'Exit requested';
-    button.classList.add('is-exiting');
+    exitButtons.forEach((exitButton) => {
+      exitButton.disabled = true;
+      exitButton.textContent = 'Exit requested';
+      exitButton.classList.add('is-exiting');
+    });
     if (status) {
       status.textContent = 'Exit requested. Saving a final backup and stopping the app now.';
       status.classList.remove('attention-banner-ok');

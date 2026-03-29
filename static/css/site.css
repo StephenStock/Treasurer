@@ -176,6 +176,18 @@ button,
   border-color: var(--accent);
 }
 
+.nav-link-exit {
+  background: var(--warning-bg);
+  border-color: rgba(123, 66, 17, 0.18);
+  color: var(--warning-text);
+}
+
+.nav-link-exit.is-exiting {
+  background: var(--warning-text);
+  color: #fff7f3;
+  border-color: var(--warning-text);
+}
+
 .page-shell {
   padding-bottom: 3rem;
 }

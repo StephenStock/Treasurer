@@ -30,6 +30,14 @@
             </button>
             <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
             <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+            <button
+              class="nav-link nav-link-exit"
+              type="button"
+              data-exit-app
+              data-exit-url="{{ url_for('main.exit_app') }}"
+            >
+              Exit App
+            </button>
           </div>
         </nav>
       </div>
