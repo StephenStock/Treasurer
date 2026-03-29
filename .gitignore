@@ -10,7 +10,7 @@ instance/
 Transactions_Export_*.csv
 
 Accounts*.xlsx
-!LodgeAccounts_Template.xlsx
+!TreasurerAccounts_Template.xlsx
 
 .pytest_cache/
 .mypy_cache/
