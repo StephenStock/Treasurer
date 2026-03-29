@@ -117,12 +117,21 @@ button,
 
 .top-nav {
   display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.top-nav-row {
+  display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
+  align-items: flex-start;
 }
 
 .nav-menu {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
 }
 
 .nav-menu summary {
@@ -134,29 +143,26 @@ button,
   display: none;
 }
 
-.nav-menu[open] .nav-link {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+.nav-menu-list {
+  display: none;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+  padding-left: 0;
 }
 
-.nav-menu-list {
-  position: absolute;
-  z-index: 8;
-  top: calc(100% - 1px);
-  left: 0;
-  min-width: 14rem;
-  padding: 0.45rem;
-  border: 1px solid rgba(127, 29, 29, 0.14);
-  border-radius: 0 16px 16px 16px;
-  background: rgba(255, 250, 241, 0.98);
-  box-shadow: 0 16px 28px var(--shadow);
+.nav-menu[open] .nav-menu-list {
+  display: flex;
 }
 
 .nav-menu-item {
-  display: block;
+  display: inline-flex;
+  align-items: center;
   padding: 0.55rem 0.75rem;
   border-radius: 10px;
   color: var(--text);
+  background: rgba(255, 250, 241, 0.88);
+  border: 1px solid rgba(127, 29, 29, 0.12);
   text-decoration: none;
 }
 
@@ -166,6 +172,8 @@ button,
 }
 
 .nav-link {
+  display: inline-flex;
+  align-items: center;
   padding: 0.65rem 1rem;
   border: 1px solid rgba(127, 29, 29, 0.12);
   border-radius: 999px;

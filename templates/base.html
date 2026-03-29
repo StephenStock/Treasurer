@@ -22,22 +22,24 @@
     </div>
 
     <nav class="top-nav" aria-label="Primary">
-      <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Home</a>
-      <a class="nav-link {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
-      <details class="nav-menu">
-        <summary class="nav-link {% if active_page == 'balances' %}is-active{% endif %}">Balances</summary>
-        <div class="nav-menu-list">
-          <a class="nav-menu-item" href="{{ url_for('main.balances_index') }}">Overview</a>
-          {% for account in balance_nav_accounts %}
-            <a class="nav-menu-item" href="{{ url_for('main.balance_sheet', account_code=account.code) }}">{{ account.display_name }}</a>
-          {% endfor %}
-        </div>
-      </details>
-      <a class="nav-link {% if active_page == 'cash' %}is-active{% endif %}" href="{{ url_for('main.cash') }}">Cash</a>
-      <a class="nav-link {% if active_page == 'bank' %}is-active{% endif %}" href="{{ url_for('main.bank') }}">Bank</a>
-      <a class="nav-link {% if active_page == 'members' %}is-active{% endif %}" href="{{ url_for('main.members') }}">Members</a>
-      <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
-      <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+      <div class="top-nav-row">
+        <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Home</a>
+        <a class="nav-link {% if active_page == 'members' %}is-active{% endif %}" href="{{ url_for('main.members') }}">Members</a>
+        <a class="nav-link {% if active_page == 'bank' %}is-active{% endif %}" href="{{ url_for('main.bank') }}">Bank</a>
+        <a class="nav-link {% if active_page == 'cash' %}is-active{% endif %}" href="{{ url_for('main.cash') }}">Cash</a>
+        <details class="nav-menu report-menu" {% if active_page in ['statement', 'balances'] %}open{% endif %}>
+          <summary class="nav-link {% if active_page in ['statement', 'balances'] %}is-active{% endif %}">Reports</summary>
+          <div class="nav-menu-list" aria-label="Reports">
+            <a class="nav-menu-item {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
+            <a class="nav-menu-item {% if active_page == 'balances' %}is-active{% endif %}" href="{{ url_for('main.balances_index') }}">Balances</a>
+            {% for account in balance_nav_accounts %}
+              <a class="nav-menu-item {% if active_page == 'balances' and selected_account is defined and selected_account.code == account.code %}is-active{% endif %}" href="{{ url_for('main.balance_sheet', account_code=account.code) }}">{{ account.display_name }}</a>
+            {% endfor %}
+          </div>
+        </details>
+        <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
+        <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+      </div>
     </nav>
   </header>
 
