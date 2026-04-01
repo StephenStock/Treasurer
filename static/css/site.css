@@ -245,6 +245,62 @@ button,
   background: var(--accent-soft);
 }
 
+.statement-header-card {
+  display: grid;
+  grid-template-columns: 2fr 0.95fr;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(180deg, rgba(255, 250, 241, 0.98), rgba(255, 247, 237, 0.92));
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 18px 44px var(--shadow);
+}
+
+.statement-header-copy {
+  display: grid;
+  gap: 0.18rem;
+  align-content: start;
+}
+
+.statement-header-crest {
+  margin: 0;
+  color: #2e6fb0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.statement-header-card h2 {
+  max-width: 30ch;
+  line-height: 1.02;
+  font-size: clamp(1.15rem, 1.55vw, 1.75rem);
+}
+
+.statement-header-actions {
+  display: grid;
+  gap: 0.45rem;
+  align-content: center;
+  justify-items: stretch;
+  padding: 0.8rem 0.9rem;
+  border-radius: 18px;
+  background: var(--accent-soft);
+}
+
+.auditors-header-note {
+  margin: 0.08rem 0 0;
+  max-width: 58ch;
+  color: var(--muted);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 0.88rem;
+}
+
+.no-print {
+  display: block;
+}
+
 .attention-banner {
   margin: 0;
   padding: 0.8rem 0.9rem;
@@ -446,6 +502,16 @@ table {
   vertical-align: middle;
 }
 
+.compact-ledger tr.is-split td {
+  vertical-align: top;
+}
+
+.compact-ledger tr.is-split .details-cell,
+.compact-ledger tr.is-split .money-cell,
+.compact-ledger tr.is-split .meeting-cell {
+  padding-top: 0.55rem;
+}
+
 .compact-ledger .details-cell {
   font-size: 0.84rem;
 }
@@ -457,10 +523,196 @@ table {
 
 .compact-ledger .category-cell {
   min-width: 220px;
+  vertical-align: top;
+}
+
+.compact-ledger .type-cell {
+  vertical-align: top;
+}
+
+.bank-type-label {
+  line-height: 1.02;
 }
 
 .statement-table {
   min-width: 100%;
+  table-layout: fixed;
+}
+
+.statement-label-col {
+  width: 38%;
+}
+
+.statement-account-col {
+  width: 28%;
+}
+
+.statement-money-col {
+  width: 12%;
+}
+
+.statement-table th.money-cell {
+  text-align: right;
+}
+
+.statement-signoff-panel {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin-top: 1rem;
+}
+
+.statement-signoff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.statement-signoff-card {
+  min-height: 170px;
+  padding: 0.8rem 0.9rem 0.85rem;
+  border: 1px solid rgba(215, 199, 172, 0.55);
+  border-radius: 18px;
+  background: rgba(255, 250, 241, 0.88);
+}
+
+.statement-signoff-card h4 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+}
+
+.statement-signoff-field {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.55rem;
+}
+
+.statement-signoff-field span {
+  color: var(--muted);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 0.8rem;
+}
+
+.statement-signoff-line {
+  min-height: 1.2rem;
+  border-bottom: 1px solid rgba(47, 36, 23, 0.45);
+}
+
+.statement-signoff-line-large {
+  min-height: 1.5rem;
+}
+
+.auditors-panel {
+  margin-bottom: 1rem;
+}
+
+.auditors-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.auditors-check-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(215, 199, 172, 0.55);
+  border-radius: 16px;
+  background: rgba(255, 250, 241, 0.88);
+}
+
+.auditors-check-item p {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.auditors-check-box {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.2rem;
+  border: 1.5px solid rgba(47, 36, 23, 0.55);
+  border-radius: 3px;
+  background: transparent;
+}
+
+.auditors-summary-table {
+  font-size: 0.92rem;
+}
+
+.auditors-history-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.auditors-history-card {
+  padding: 0.95rem;
+  border: 1px solid rgba(215, 199, 172, 0.55);
+  border-radius: 18px;
+  background: rgba(255, 250, 241, 0.88);
+}
+
+.auditors-history-heading {
+  margin-bottom: 0.5rem;
+}
+
+.auditors-history-heading h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.auditors-history-heading .section-note {
+  margin-top: 0.25rem;
+}
+
+.auditors-history-table {
+  font-size: 0.88rem;
+}
+
+.auditors-date-col {
+  width: 13%;
+}
+
+.auditors-details-col {
+  width: 58%;
+}
+
+.auditors-category-col {
+  width: 11%;
+}
+
+.auditors-income-col {
+  width: 10%;
+}
+
+.auditors-expense-col {
+  width: 11%;
+}
+
+.auditors-amount-col {
+  width: 12%;
+}
+
+.auditors-running-col {
+  width: 14%;
+}
+
+.auditors-meeting-col {
+  width: 30%;
+}
+}
+
+.auditors-entry-details {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.auditors-entry-category {
+  white-space: nowrap;
+}
+
+.auditors-signoff-panel {
+  margin-top: 0.8rem;
 }
 
 .statement-sheet-grid {
@@ -566,44 +818,58 @@ table {
   }
 }
 
-.cash-entry-edit {
-  display: inline-block;
+.cash-field-text {
+  display: block;
 }
 
-.cash-entry-edit summary {
-  list-style: none;
-}
-
-.cash-entry-edit summary::-webkit-details-marker {
+.cash-field-input {
   display: none;
-}
-
-.cash-edit-form {
-  display: grid;
-  gap: 0.35rem;
-  width: 210px;
-  padding: 0.6rem;
-  margin-top: 0.4rem;
-  border: 1px solid rgba(215, 199, 172, 0.55);
-  border-radius: 14px;
-  background: rgba(255, 250, 241, 0.96);
-}
-
-.cash-edit-form label {
-  display: grid;
-  gap: 0.25rem;
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.cash-edit-form input,
-.cash-edit-form select {
   width: 100%;
-  padding: 0.34rem 0.45rem;
+  padding: 0.35rem 0.45rem;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-strong);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.cash-entry-row.is-editing .cash-field-text {
+  display: none;
+}
+
+.cash-entry-row.is-editing .cash-field-input {
+  display: block;
+}
+
+.cash-field-entry-name-select {
+  display: none;
+}
+
+.cash-entry-row.is-editing .cash-field-entry-name {
+  display: block;
+}
+
+.cash-entry-row.is-editing.is-member-entry .cash-field-entry-name {
+  display: none;
+}
+
+.cash-entry-row.is-editing .cash-field-entry-name-select {
+  display: none;
+}
+
+.cash-entry-row.is-editing.is-member-entry .cash-field-entry-name-select {
+  display: block;
+}
+
+.cash-entry-row.is-editing .cash-actions .cash-edit-controls {
+  display: flex;
+}
+
+.cash-edit-controls {
+  display: none;
+  gap: 0.35rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .cash-actions {
@@ -621,12 +887,6 @@ table {
 
 .cash-delete-form {
   margin-top: 0;
-}
-
-.cash-entry-edit summary.button,
-.cash-delete-form .button {
-  padding: 0.38rem 0.72rem;
-  font-size: 0.8rem;
 }
 
 .cash-delete-form .button {
@@ -758,34 +1018,122 @@ table {
   border-top: 1px solid rgba(127, 29, 29, 0.25);
 }
 
-.statement-check-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.statement-check-card {
-  padding: 1rem 1.1rem;
-  border-radius: 18px;
-  background: rgba(255, 250, 241, 0.88);
-  border: 1px solid rgba(215, 199, 172, 0.55);
-}
-
-.statement-check-card span {
-  display: block;
-  color: var(--muted);
-  font-family: "Segoe UI", Tahoma, sans-serif;
-  font-size: 0.9rem;
-}
-
-.statement-check-card strong {
-  display: block;
-  margin-top: 0.45rem;
-  font-size: 1.35rem;
-}
-
 .opening-balance {
   background: rgba(234, 214, 196, 0.35);
+}
+
+.bank-allocation-form {
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+}
+
+.bank-allocation-single[hidden],
+.bank-allocation-split[hidden],
+.bank-allocation-split-actions[hidden] {
+  display: none !important;
+}
+
+.bank-allocation-single {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.bank-allocation-picker {
+  width: 100%;
+  min-width: 0;
+}
+
+.bank-allocation-split {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.bank-allocation-split-shell {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 0;
+  overflow: visible;
+}
+
+.bank-allocation-split-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 0.22rem;
+  align-items: center;
+  width: max-content;
+  z-index: 1;
+  padding-top: 0;
+  flex-wrap: nowrap;
+  margin-top: 0.35rem;
+}
+
+.bank-allocation-split-actions .button {
+  min-height: 1.55rem;
+  min-width: 1.55rem;
+  width: 1.55rem;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.bank-split-add {
+  width: 1.55rem;
+  min-width: 1.55rem;
+  padding-inline: 0;
+  text-align: center;
+}
+
+.bank-allocation-split-actions .inline-save-status {
+  margin-left: 0.1rem;
+}
+
+.bank-allocation-rows {
+  display: grid;
+  gap: 0.35rem;
+  margin-left: 0;
+  min-width: 0;
+}
+
+.bank-allocation-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(110px, 0.6fr);
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.bank-allocation-select,
+.bank-allocation-amount {
+  width: 100%;
+  min-width: 0;
+  padding: 0.32rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  font-size: 0.82rem;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.bank-allocation-remove {
+  padding: 0.3rem 0.55rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+}
+
+.bank-allocation-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bank-allocation-actions .button-secondary {
+  background: var(--surface-strong);
+}
+
+.bank-allocation-summary {
+  margin-top: 0.1rem;
 }
 
 .bank-category-form {
@@ -828,6 +1176,70 @@ table {
   transform: translateY(-1px);
 }
 
+.meeting-cell {
+  min-width: 190px;
+}
+
+.bank-meeting-settled {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.bank-unlink-button {
+  width: 1.55rem;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  min-height: 1.55rem;
+  padding: 0;
+  border-radius: 8px;
+  line-height: 1;
+  font-size: 0.9rem;
+}
+
+.bank-meeting-settled .section-note {
+  flex-basis: 100%;
+}
+
+.bank-settlement-form {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: start;
+}
+
+.bank-settlement-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.bank-settlement-form select {
+  min-width: 160px;
+  padding: 0.28rem 0.45rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  font-size: 0.8rem;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.bank-link-button {
+  width: 1.55rem;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  min-height: 1.55rem;
+  flex: 0 0 1.55rem;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  line-height: 1;
+  align-self: center;
+}
+
 .bank-row-status.is-error {
   color: #a53b2a;
   transform: translateY(-1px);
@@ -853,7 +1265,7 @@ table {
 
 th,
 td {
-  padding: 0.75rem 0.45rem;
+  padding: 0.6rem 0.45rem;
   border-bottom: 1px solid rgba(215, 199, 172, 0.55);
   text-align: left;
   vertical-align: top;
@@ -932,9 +1344,283 @@ th {
   border: 0;
 }
 
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  :root {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-strong: #ffffff;
+    --border: #cfc6b8;
+    --shadow: transparent;
+  }
+
+  body {
+    background: #ffffff;
+    font-size: 11pt;
+  }
+
+  .site-header,
+  .no-print,
+  .flash-stack,
+  .nav-menu-item,
+  .nav-link,
+  .report-toggle,
+  .top-nav {
+    display: none !important;
+  }
+
+  .page-shell,
+  .site-header {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .page-shell {
+    padding: 0;
+  }
+
+  .hero-card,
+  .statement-header-card,
+  .panel,
+  .stat-card {
+    box-shadow: none;
+  }
+
+  .statement-header-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 0.9rem;
+  }
+
+  .stats-grid,
+  .statement-sheet-grid,
+  .statement-check-grid {
+    gap: 0.75rem;
+  }
+
+  .panel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .table-scroll {
+    overflow: visible;
+  }
+
+  .compact-ledger {
+    font-size: 9.5pt;
+  }
+
+  .statement-header-card h2 {
+    max-width: none;
+  }
+
+  .statement-signoff-grid {
+    gap: 0.75rem;
+  }
+
+  .statement-signoff-panel .panel-heading {
+    display: none;
+  }
+
+  .statement-signoff-panel {
+    margin-top: 0.5rem;
+    padding-top: 0.45rem;
+  }
+
+  .statement-signoff-card {
+    min-height: 120px;
+    padding: 0.55rem 0.65rem 0.6rem;
+  }
+
+  .statement-signoff-card h4 {
+    margin-bottom: 0.45rem;
+  }
+
+  .statement-signoff-field {
+    margin-bottom: 0.35rem;
+  }
+
+  .statement-signoff-line {
+    min-height: 0.85rem;
+  }
+
+  .statement-signoff-line-large {
+    min-height: 1.1rem;
+  }
+
+  .auditors-checklist-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auditors-history-card {
+    padding: 0.75rem;
+  }
+
+  body.auditors .statement-header-card {
+    margin-bottom: 0.45rem;
+    padding: 0.45rem 0.6rem;
+  }
+
+  body.auditors .statement-header-card h2 {
+    font-size: 1.2rem;
+  }
+
+  body.auditors .auditors-header-note,
+  body.auditors .statement-header-actions .section-note {
+    font-size: 0.78rem;
+  }
+
+  body.auditors .auditors-stats {
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  body.auditors .auditors-stats .stat-card {
+    padding: 0.55rem 0.65rem;
+  }
+
+  body.auditors .auditors-panel {
+    margin-bottom: 0.35rem;
+    break-inside: auto;
+    page-break-inside: auto;
+    overflow: visible;
+  }
+
+  body.auditors .auditors-check-item {
+    padding: 0.4rem 0.5rem;
+  }
+
+  body.auditors .auditors-check-item p,
+  body.auditors .auditors-history-heading .section-note {
+    font-size: 0.68rem;
+  }
+
+  body.auditors .auditors-summary-table,
+  body.auditors .auditors-history-table {
+    font-size: 0.56rem;
+  }
+
+  body.auditors .auditors-history-list {
+    gap: 0.55rem;
+  }
+
+  body.auditors .auditors-history-card {
+    padding: 0.3rem 0.35rem;
+    break-inside: auto;
+    page-break-inside: auto;
+    overflow: visible;
+  }
+
+  body.auditors .auditors-history-table {
+    width: 100%;
+    table-layout: fixed;
+    overflow: visible;
+  }
+
+  body.auditors .auditors-history-table td:nth-child(1),
+  body.auditors .auditors-history-table th:nth-child(1) {
+    width: 12%;
+  }
+
+  body.auditors .auditors-history-table td:nth-child(2),
+  body.auditors .auditors-history-table th:nth-child(2) {
+    width: 54%;
+  }
+
+  body.auditors .auditors-history-table td:nth-child(3),
+  body.auditors .auditors-history-table th:nth-child(3) {
+    width: 12%;
+  }
+
+  body.auditors .auditors-history-table td:nth-child(4),
+  body.auditors .auditors-history-table th:nth-child(4) {
+    width: 12%;
+  }
+
+  body.auditors .auditors-history-table td:nth-child(5),
+  body.auditors .auditors-history-table th:nth-child(5) {
+    width: 11%;
+  }
+
+  body.auditors .auditors-history-table td:nth-child(6),
+  body.auditors .auditors-history-table th:nth-child(6) {
+    width: 13%;
+  }
+
+  body.auditors .auditors-history-table td:nth-child(2) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  body.auditors .auditors-history-heading {
+    margin-bottom: 0.2rem;
+  }
+
+  body.auditors .auditors-history-heading h4 {
+    font-size: 0.82rem;
+  }
+
+  body.auditors .table-scroll {
+    overflow: visible;
+  }
+
+  body.auditors .statement-signoff-panel {
+    margin-top: 0.25rem;
+    padding-top: 0.15rem;
+    break-inside: auto;
+    page-break-inside: auto;
+    overflow: visible;
+  }
+
+  body.auditors .statement-signoff-card {
+    min-height: 84px;
+    padding: 0.3rem 0.4rem 0.35rem;
+  }
+
+  body.auditors .statement-signoff-card h4 {
+    margin-bottom: 0.2rem;
+    font-size: 0.78rem;
+  }
+
+  body.auditors .statement-signoff-field {
+    margin-bottom: 0.18rem;
+  }
+
+  body.auditors .statement-signoff-field span {
+    font-size: 0.66rem;
+  }
+
+  body.auditors .statement-signoff-line {
+    min-height: 0.55rem;
+  }
+
+  body.auditors .statement-signoff-line-large {
+    min-height: 0.75rem;
+  }
+
+  body.auditors .auditors-history-table th,
+  body.auditors .auditors-history-table td {
+    padding-left: 0.12rem;
+    padding-right: 0.12rem;
+    padding-top: 0.08rem;
+    padding-bottom: 0.08rem;
+  }
+
+  body.auditors .auditors-history-table .money-cell {
+    padding-right: 0;
+  }
+}
+
 @media (max-width: 920px) {
   .site-header-top,
   .hero-card,
+  .statement-header-card,
   .stats-grid,
   .content-grid,
   .backup-status-grid {
@@ -968,6 +1654,10 @@ th {
     width: 100%;
   }
 
+  .statement-header-actions {
+    width: 100%;
+  }
+
   .settings-inline-actions {
     flex-direction: column;
     align-items: stretch;
@@ -989,8 +1679,16 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .statement-check-grid {
+  .statement-signoff-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auditors-checklist-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auditors-history-table {
+    min-width: 760px;
   }
 
   .cash-add-form {

@@ -6,7 +6,7 @@
   <section class="panel dashboard-status-panel">
     <div class="panel-heading">
       <div>
-        <h3>Backup and Exit</h3>
+        <h3>Dashboard Overview</h3>
         <p class="section-note">{{ backup_dashboard_summary }}</p>
       </div>
     </div>
@@ -20,147 +20,59 @@
     </p>
   </section>
 
-  <section class="stats-grid">
+  <section class="stats-grid dashboard-stats">
     <article class="stat-card">
-      <span>Members</span>
-      <strong>{{ stats.members }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Events</span>
-      <strong>{{ stats.events }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Open Messages</span>
-      <strong>{{ stats.open_messages }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Dues Outstanding</span>
+      <span>Outstanding Dues</span>
       <strong>&pound;{{ "%.2f"|format(stats.dues_outstanding) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Members in Arrears</span>
+      <strong>{{ stats.arrears_count }}</strong>
     </article>
   </section>
 
-  <section class="content-grid">
-    <article class="panel">
-      <div class="panel-heading">
-        <h3>Members</h3>
-        <input type="search" id="memberSearch" placeholder="Filter members">
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Members in Arrears</h3>
+        <p class="section-note">Only members who owe subscriptions or dining charges for the current reporting period are displayed.</p>
       </div>
-      <table>
+    </div>
+    <div class="table-scroll">
+      <table class="dues-table">
         <thead>
           <tr>
             <th>No.</th>
             <th>Name</th>
             <th>Type</th>
-            <th>Email</th>
             <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="membersTable">
-          {% for member in recent_members %}
-            <tr>
-              <td>{{ member.membership_number }}</td>
-              <td>{{ member.full_name }}</td>
-              <td>{{ member.member_type or "-" }}</td>
-              <td>{{ member.email }}</td>
-              <td><span class="pill">{{ member.status }}</span></td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </article>
-
-    <article class="panel">
-      <div class="panel-heading">
-        <h3>Dues</h3>
-      </div>
-      <div class="table-scroll">
-        <table class="dues-table">
-          <thead>
-            <tr>
-              <th>Member</th>
-              <th>Year</th>
-              <th>Subs Due</th>
-              <th>Subs Paid</th>
-              <th>Dining Due</th>
-              <th>Dining Paid</th>
-              <th>Outstanding</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in dues %}
-              <tr>
-                <td>{{ row.full_name }}</td>
-                <td>{{ row.year }}</td>
-                <td>&pound;{{ "%.2f"|format(row.subscription_due) }}</td>
-                <td>&pound;{{ "%.2f"|format(row.subscription_paid) }}</td>
-                <td>&pound;{{ "%.2f"|format(row.dining_due) }}</td>
-                <td>&pound;{{ "%.2f"|format(row.dining_paid) }}</td>
-                <td>&pound;{{ "%.2f"|format(row.subscription_outstanding + row.dining_outstanding) }}</td>
-                <td><span class="pill">{{ row.status }}</span></td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </article>
-
-    <article class="panel">
-      <div class="panel-heading">
-        <h3>Upcoming Events</h3>
-      </div>
-      {% for event in upcoming_events %}
-        <div class="event-card">
-          <h4>{{ event.title }}</h4>
-          <p>{{ event.event_date }} | {{ event.meal_name }} | &pound;{{ "%.2f"|format(event.meal_price) }}</p>
-          <p>Booking deadline: {{ event.booking_deadline }}</p>
-          <p>{{ event.notes }}</p>
-        </div>
-      {% endfor %}
-    </article>
-
-    <article class="panel">
-      <div class="panel-heading">
-        <h3>Bookings</h3>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Event</th>
-            <th>Member</th>
-            <th>Seats</th>
-            <th>Dietary</th>
-            <th>Status</th>
+            <th>Subs Due</th>
+            <th>Subs Paid</th>
+            <th>Dining Due</th>
+            <th>Dining Paid</th>
+            <th>Outstanding</th>
           </tr>
         </thead>
         <tbody>
-          {% for booking in bookings %}
+          {% for member in arrears_members %}
             <tr>
-              <td>{{ booking.title }}</td>
-              <td>{{ booking.full_name }}</td>
-              <td>{{ booking.seats }}</td>
-              <td>{{ booking.dietary_notes or "-" }}</td>
-              <td><span class="pill">{{ booking.status }}</span></td>
+              <td>{{ member.membership_number }}</td>
+              <td>{{ member.full_name }}</td>
+              <td>{{ member.member_type }}</td>
+              <td><span class="pill">{{ member.status }}</span></td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(member.subscription_due) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(member.subscription_paid) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(member.dining_due) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(member.dining_paid) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(member.total_outstanding) }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="9">No members currently in arrears.</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
-    </article>
-
-    <article class="panel panel-wide">
-      <div class="panel-heading">
-        <h3>Messages</h3>
-      </div>
-      {% for message in messages %}
-        <div class="message-card">
-          <div class="message-meta">
-            <strong>{{ message.subject }}</strong>
-            <span>{{ message.sender_name }} ({{ message.sender_role }})</span>
-            <span>{{ message.created_at }}</span>
-          </div>
-          <p>{{ message.body }}</p>
-        </div>
-      {% endfor %}
-    </article>
+    </div>
   </section>
 {% endblock %}

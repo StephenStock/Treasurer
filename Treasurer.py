@@ -28,6 +28,7 @@ categories = [
     "Charity",
     "Benevolent Funds",
     "LOI",
+    "LOI-Expenses",
     "Dining Fees",
     "Tyler Payment",
     "Gavel Collection",
@@ -87,6 +88,7 @@ ws_summary.append(["Treasurer Funds", '=SUMIF(Transactions!D:D, "Treasurer Funds
 ws_summary.append(["Charity", '=SUMIF(Transactions!D:D, "Charity", Transactions!C:C)'])
 ws_summary.append(["Benevolent Funds", '=SUMIF(Transactions!D:D, "Benevolent Funds", Transactions!C:C)'])
 ws_summary.append(["LOI", '=SUMIF(Transactions!D:D, "LOI", Transactions!C:C)'])
+ws_summary.append(["LOI-Expenses", '=SUMIF(Transactions!D:D, "LOI-Expenses", Transactions!C:C)'])
 ws_summary.append(["Dining Fees", '=SUMIF(Transactions!D:D, "Dining Fees", Transactions!C:C)'])
 ws_summary.append(["Tyler Payment", '=SUMIF(Transactions!D:D, "Tyler Payment", Transactions!C:C)'])
 ws_summary.append(["Gavel Collection", '=SUMIF(Transactions!D:D, "Gavel Collection", Transactions!C:C)'])

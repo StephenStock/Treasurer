@@ -3,33 +3,15 @@
 {% block title %}Statement | Treasurer Portal{% endblock %}
 
 {% block content %}
-  <section class="hero-card statement-hero">
-    <div>
-      <p class="eyebrow">Annual Statement</p>
-      <h2>Core statement summary from the workbook, limited here to the realised income and expenditure sections.</h2>
+  <section class="statement-header-card">
+    <div class="statement-header-copy">
+      <p class="statement-header-crest">Stanford-le-Hope Lodge No. 5217</p>
+      <h2>Statement of Accounts for the Year {{ statement_year_label }}</h2>
     </div>
-    <div class="hero-note statement-note">
-      <p>Forecast columns are intentionally hidden for now. This view keeps the fixed statement format while we build the rest later.</p>
+    <div class="statement-header-actions no-print">
+      <p class="section-note">Use the button below to open the browser print dialog and save a PDF copy.</p>
+      <button class="button button-primary" type="button" onclick="window.print()">Save as PDF</button>
     </div>
-  </section>
-
-  <section class="stats-grid statement-stats">
-    <article class="stat-card">
-      <span>Income</span>
-      <strong>&pound;{{ "%.2f"|format(income_total) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Expense</span>
-      <strong>&pound;{{ "%.2f"|format(expense_total) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Overall Movement</span>
-      <strong>&pound;{{ "%.2f"|format(net_result) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Uncategorised Bank Rows</span>
-      <strong>{{ uncategorised_transactions }}</strong>
-    </article>
   </section>
 
   <section class="statement-sheet-grid">
@@ -44,6 +26,12 @@
 
         <div class="table-scroll">
           <table class="statement-table compact-ledger">
+            <colgroup>
+              <col class="statement-label-col">
+              <col class="statement-money-col">
+              <col class="statement-label-col">
+              <col class="statement-money-col">
+            </colgroup>
             <thead>
               <tr>
                 <th>Income</th>
@@ -80,42 +68,6 @@
   <section class="panel statement-panel">
     <div class="panel-heading">
       <div>
-        <h3>Statement Check</h3>
-        <p class="section-note">This gives us the key control figures from the spreadsheet without the later forecasting columns.</p>
-      </div>
-    </div>
-
-    <div class="statement-check-grid">
-      <article class="statement-check-card">
-        <span>Opening bank balance</span>
-        <strong>{% if opening_bank_balance is not none %}&pound;{{ "%.2f"|format(opening_bank_balance) }}{% else %}-{% endif %}</strong>
-      </article>
-      <article class="statement-check-card">
-        <span>Latest bank balance</span>
-        <strong>{% if latest_bank_balance is not none %}&pound;{{ "%.2f"|format(latest_bank_balance) }}{% else %}-{% endif %}</strong>
-      </article>
-      <article class="statement-check-card">
-        <span>Bank receipts</span>
-        <strong>&pound;{{ "%.2f"|format(bank_receipts_total) }}</strong>
-      </article>
-      <article class="statement-check-card">
-        <span>Bank payments</span>
-        <strong>&pound;{{ "%.2f"|format(bank_payments_total) }}</strong>
-      </article>
-      <article class="statement-check-card">
-        <span>Overall movement</span>
-        <strong>&pound;{{ "%.2f"|format(net_result) }}</strong>
-      </article>
-      <article class="statement-check-card">
-        <span>Uncategorised rows</span>
-        <strong>{{ uncategorised_transactions }}</strong>
-      </article>
-    </div>
-  </section>
-
-  <section class="panel statement-panel">
-    <div class="panel-heading">
-      <div>
         <h3>Balance Sheet</h3>
         <p class="section-note">Virtual lodge accounts with opening balances from Settings and movement driven from the ledger.</p>
       </div>
@@ -123,6 +75,15 @@
 
     <div class="table-scroll">
       <table class="statement-table compact-ledger">
+        <colgroup>
+          <col class="statement-account-col">
+          <col class="statement-money-col">
+          <col class="statement-money-col">
+          <col class="statement-money-col">
+          <col class="statement-money-col">
+          <col class="statement-money-col">
+          <col class="statement-money-col">
+        </colgroup>
         <thead>
           <tr>
             <th>Account</th>
@@ -157,6 +118,63 @@
           </tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <section class="panel statement-panel statement-signoff-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Statement Sign Off</h3>
+        <p class="section-note">For lodge records, member circulation, and filing with the year-end statement.</p>
+      </div>
+    </div>
+
+    <div class="statement-signoff-grid">
+      <article class="statement-signoff-card">
+        <h4>Treasurer</h4>
+        <div class="statement-signoff-field">
+          <span>Name</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Date</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Signature</span>
+          <div class="statement-signoff-line statement-signoff-line-large"></div>
+        </div>
+      </article>
+      <article class="statement-signoff-card">
+        <h4>Auditor 1</h4>
+        <div class="statement-signoff-field">
+          <span>Name</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Date</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Signature</span>
+          <div class="statement-signoff-line statement-signoff-line-large"></div>
+        </div>
+      </article>
+      <article class="statement-signoff-card">
+        <h4>Auditor 2</h4>
+        <div class="statement-signoff-field">
+          <span>Name</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Date</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Signature</span>
+          <div class="statement-signoff-line statement-signoff-line-large"></div>
+        </div>
+      </article>
     </div>
   </section>
 {% endblock %}

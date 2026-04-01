@@ -20,7 +20,11 @@
         >
         <button class="button button-primary" type="submit">Import Statement CSVs</button>
       </form>
+      <form method="post" action="{{ url_for('main.bank_rebuild_from_workbook') }}">
+        <button class="button button-secondary" type="submit">Rebuild from Workbook</button>
+      </form>
       <p>The import can use one or more CSV files from your computer, or fall back to the downloaded statement files if you leave the picker empty. It updates only statement columns and leaves notes or category allocations untouched.</p>
+      <p><strong>Rebuild from Workbook</strong> clears the current bank rows and repopulates them from the spreadsheet, including any split allocations stored on the Bank sheet.</p>
       {% if bank_summary.uncategorised_transactions %}
         <p class="attention-banner">
           {{ bank_summary.uncategorised_transactions }} uncategorised row{{ 's' if bank_summary.uncategorised_transactions != 1 else '' }} need attention.
@@ -62,64 +66,198 @@
     <div class="table-scroll">
       <table class="bank-table compact-ledger">
         <thead>
-          <tr>
-            <th>Date</th>
-            <th>Details</th>
-            <th>Type</th>
-            <th>In</th>
-            <th>Out</th>
-            <th>Balance</th>
-            <th>Category</th>
-          </tr>
+            <tr>
+              <th>Date</th>
+              <th>Details</th>
+              <th>Type</th>
+              <th>Category</th>
+              <th>Meeting</th>
+              <th>In</th>
+              <th>Out</th>
+              <th>Balance</th>
+            </tr>
         </thead>
         <tbody id="bankTable">
           {% for transaction in bank_transactions %}
             <tr class="{% if transaction.is_opening_balance %}opening-balance{% endif %}{% if transaction.needs_attention %} needs-attention{% endif %}">
               <td>{{ transaction.transaction_date or "-" }}</td>
               <td class="details-cell">{{ transaction.details }}</td>
-              <td>{{ transaction.transaction_type or "-" }}</td>
-              <td class="money-cell">{% if transaction.money_in %}&pound;{{ "%.2f"|format(transaction.money_in) }}{% else %}-{% endif %}</td>
-              <td class="money-cell">{% if transaction.money_out %}&pound;{{ "%.2f"|format(transaction.money_out) }}{% else %}-{% endif %}</td>
-              <td class="money-cell">{% if transaction.running_balance is not none %}&pound;{{ "%.2f"|format(transaction.running_balance) }}{% else %}-{% endif %}</td>
+              {% set single_allocation = transaction.allocations[0] if transaction.allocations else None %}
+              {% set split_rows = transaction.allocations if transaction.allocations|length > 1 else [] %}
+              <td class="type-cell">
+                <div class="bank-type-label">{{ transaction.transaction_type or "-" }}</div>
+                {% if not transaction.is_opening_balance %}
+                  <div class="bank-allocation-split-actions bank-split-toolbar" data-bank-allocation-split-actions {% if split_rows|length == 0 %}hidden{% endif %}>
+                    <button type="button" class="button button-secondary bank-split-add" data-bank-split-add aria-label="Add split row">+</button>
+                    <button type="button" class="button button-secondary bank-split-cancel" data-bank-split-cancel aria-label="Cancel split">×</button>
+                    <button type="button" class="button button-primary bank-split-save" data-bank-split-save aria-label="Save split">✓</button>
+                    <span class="inline-save-status" data-bank-allocation-status aria-live="polite"></span>
+                  </div>
+                {% endif %}
+              </td>
               <td class="category-cell">
                 {% if transaction.is_opening_balance %}
                   <span class="muted-text">Opening balance</span>
                 {% else %}
-                  <div class="bank-category-wrap">
-                    <form
-                      class="bank-category-form"
-                      method="post"
-                      action="{{ url_for('main.bank_assign', transaction_id=transaction.id) }}"
-                      data-ajax="true"
-                    >
+                  <form
+                    class="bank-allocation-form"
+                    method="post"
+                    action="{{ url_for('main.bank_assign', transaction_id=transaction.id) }}"
+                    data-bank-allocation-form
+                    data-transaction-amount="{{ "%.2f"|format(transaction.net_amount) }}"
+                    data-bank-split-mode="{{ 'true' if split_rows|length > 0 else 'false' }}"
+                  >
+                    <div class="bank-allocation-single" data-bank-allocation-single>
                       <label class="sr-only" for="category-{{ transaction.id }}">Category</label>
                       <select
                         id="category-{{ transaction.id }}"
-                        name="ledger_category_id"
-                        class="bank-category-select"
-                        data-autosubmit="true"
+                        name="allocation_category_id"
+                        class="bank-allocation-select bank-allocation-picker"
+                        data-bank-allocation-category
+                        data-bank-allocation-single-picker
                         required
                       >
                         <option value="">Choose category</option>
+                        <option value="__split__">Split</option>
                         {% for category in ledger_categories %}
-                          <option value="{{ category.id }}" {% if transaction.selected_category_id == category.id %}selected{% endif %}>
+                          <option
+                            value="{{ category.id }}"
+                            data-category-code="{{ category.code }}"
+                            {% if single_allocation and single_allocation.ledger_category_id == category.id %}selected{% endif %}
+                          >
                             {{ category.display_name }}
                           </option>
                         {% endfor %}
                       </select>
-                      <input type="hidden" name="amount" value="{{ '%.2f'|format(transaction.net_amount) }}">
-                    </form>
-                    <span
-                      class="bank-row-status {% if transaction.needs_attention %}is-needed{% endif %}"
-                      data-row-status="{{ transaction.id }}"
-                      aria-live="polite"
-                      title="{% if transaction.needs_attention %}Needs category{% endif %}"
-                    >
-                      {% if transaction.needs_attention %}•{% endif %}
-                    </span>
-                  </div>
+                      <input
+                        type="hidden"
+                        name="allocation_amount"
+                        data-bank-allocation-single-amount
+                        value="{{ '%.2f'|format(transaction.net_amount) }}"
+                      >
+                    </div>
+
+                    <div class="bank-allocation-split" data-bank-allocation-split {% if split_rows|length == 0 %}hidden{% endif %}>
+                      <div class="bank-allocation-split-shell">
+                        <div class="bank-allocation-rows" data-bank-allocation-rows>
+                          {% for allocation in split_rows %}
+                            <div class="bank-allocation-row" data-bank-allocation-row>
+                              <label class="sr-only">Category</label>
+                              <select
+                                name="allocation_category_id"
+                                class="bank-allocation-select"
+                                data-bank-allocation-category
+                                required
+                              >
+                                <option value="">Choose category</option>
+                                {% for category in ledger_categories %}
+                                  <option
+                                    value="{{ category.id }}"
+                                    data-category-code="{{ category.code }}"
+                                    {% if allocation.ledger_category_id == category.id %}selected{% endif %}
+                                  >
+                                    {{ category.display_name }}
+                                  </option>
+                                {% endfor %}
+                              </select>
+                              <label class="sr-only">Amount</label>
+                              <input
+                                type="number"
+                                name="allocation_amount"
+                                class="bank-allocation-amount"
+                                data-bank-allocation-amount
+                                step="0.01"
+                                min="0"
+                                inputmode="decimal"
+                                value="{{ '%.2f'|format(allocation.amount) if allocation.amount is not none else '' }}"
+                                required
+                              >
+                            </div>
+                          {% endfor %}
+                        </div>
+                      </div>
+                      <template data-bank-allocation-template>
+                        <div class="bank-allocation-row" data-bank-allocation-row>
+                          <label class="sr-only">Category</label>
+                          <select
+                            name="allocation_category_id"
+                            class="bank-allocation-select"
+                            data-bank-allocation-category
+                            required
+                          >
+                            <option value="">Choose category</option>
+                            {% for category in ledger_categories %}
+                              <option value="{{ category.id }}" data-category-code="{{ category.code }}">
+                                {{ category.display_name }}
+                              </option>
+                            {% endfor %}
+                          </select>
+                          <label class="sr-only">Amount</label>
+                          <input
+                            type="number"
+                            name="allocation_amount"
+                            class="bank-allocation-amount"
+                            data-bank-allocation-amount
+                            step="0.01"
+                            min="0"
+                            inputmode="decimal"
+                            value=""
+                            required
+                          >
+                        </div>
+                      </template>
+                    </div>
+                  </form>
                 {% endif %}
               </td>
+              <td class="meeting-cell">
+                {% if transaction.settlement_id %}
+                  <div class="bank-meeting-settled" data-bank-meeting-settled>
+                    <span class="pill">Settled to {{ transaction.settlement_meeting_name or transaction.settlement_meeting_key }}</span>
+                    <form
+                      method="post"
+                      action="{{ url_for('main.bank_transaction_unsettle', transaction_id=transaction.id) }}"
+                      data-bank-settlement-unlink-form
+                    >
+                      <button type="submit" class="button button-secondary bank-unlink-button" aria-label="Unlink meeting">×</button>
+                    </form>
+                    {% if transaction.settlement_date %}
+                      <p class="section-note">{{ transaction.settlement_date }}</p>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <div class="bank-meeting-controls" data-bank-meeting-controls {% if not transaction.is_cash_category %}hidden{% endif %}>
+                    <form
+                      class="bank-settlement-form"
+                      method="post"
+                      action="{{ url_for('main.bank_transaction_settle', transaction_id=transaction.id) }}"
+                      data-bank-settlement-form
+                    >
+                      <div class="bank-settlement-inline">
+                        <label class="sr-only" for="meeting-{{ transaction.id }}">Meeting</label>
+                        <select id="meeting-{{ transaction.id }}" name="meeting_key" required>
+                          <option value="">Link to meeting</option>
+                          {% for meeting in meeting_summaries %}
+                            {% set remaining = meeting.remaining_to_bank %}
+                            <option value="{{ meeting.meeting_key }}" {% if remaining <= 0 %}disabled{% endif %}>
+                              {{ meeting.meeting_name }}{% if remaining > 0 %} (&pound;{{ "%.2f"|format(remaining) }} remaining){% else %} (Settled){% endif %}
+                            </option>
+                          {% endfor %}
+                        </select>
+                        <button class="button button-primary bank-link-button" type="submit" aria-label="Link to meeting">↗</button>
+                      </div>
+                      <input type="hidden" name="settlement_date" value="{{ transaction.transaction_date or '' }}">
+                      <span class="inline-save-status" data-bank-settlement-status aria-live="polite"></span>
+                    </form>
+                  </div>
+                  <p class="section-note bank-meeting-hint" data-bank-meeting-hint {% if transaction.is_cash_category %}hidden{% endif %}>
+                    Add a Cash allocation to link this row to a meeting.
+                  </p>
+                {% endif %}
+              </td>
+              <td class="money-cell">{% if transaction.money_in %}&pound;{{ "%.2f"|format(transaction.money_in) }}{% else %}-{% endif %}</td>
+              <td class="money-cell">{% if transaction.money_out %}&pound;{{ "%.2f"|format(transaction.money_out) }}{% else %}-{% endif %}</td>
+              <td class="money-cell">{% if transaction.running_balance is not none %}&pound;{{ "%.2f"|format(transaction.running_balance) }}{% else %}-{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>

@@ -38,6 +38,49 @@ const formatMoney = (value) => {
   return amount === 0 ? '-' : `\u00a3${amount.toFixed(2)}`;
 };
 
+const getRowCell = (row, fieldName) =>
+  row?.querySelector(`[data-field="${fieldName}"]`);
+
+const setRowInputsFromCells = (row) => {
+  if (!row) {
+    return;
+  }
+  const setInput = (fieldName) => {
+    const cell = getRowCell(row, fieldName);
+    const input = row.querySelector(`[data-input-field="${fieldName}"]`);
+    if (cell && input) {
+      input.value = cell.dataset.value ?? cell.textContent.trim();
+    }
+  };
+
+  setInput('entry_type');
+  setInput('entry_name');
+  setInput('money_in');
+  setInput('money_out');
+  setInput('notes');
+
+  const nameCell = getRowCell(row, 'entry_name');
+  const memberSelect = row.querySelector('[data-input-field="member_id"]');
+  if (nameCell && memberSelect) {
+    memberSelect.value = nameCell.dataset.memberId || '';
+  }
+
+  const categoryCell = getRowCell(row, 'category_name');
+  const categorySelect = row.querySelector('[data-input-field="ledger_category_id"]');
+  if (categoryCell && categorySelect) {
+    categorySelect.value = categoryCell.dataset.categoryId || '';
+  }
+};
+
+const refreshCashEntryNameField = (row) => {
+  if (!row) {
+    return;
+  }
+  const entryTypeCell = getRowCell(row, 'entry_type');
+  const entryTypeValue = entryTypeCell?.dataset.value?.trim().toLowerCase() || '';
+  row.classList.toggle('is-member-entry', entryTypeValue === 'member');
+};
+
 const updateCashRow = (row, entry, statusElement) => {
   const itemCell = row.querySelector('[data-field="entry_type"]');
   const nameCell = row.querySelector('[data-field="entry_name"]');
@@ -46,17 +89,37 @@ const updateCashRow = (row, entry, statusElement) => {
   const moneyOutCell = row.querySelector('[data-field="money_out"]');
   const notesCell = row.querySelector('[data-field="notes"]');
 
-  if (itemCell) itemCell.textContent = entry.entry_type;
-  if (nameCell) nameCell.textContent = entry.entry_name;
+  if (itemCell) {
+    itemCell.textContent = entry.entry_type;
+    itemCell.dataset.value = entry.entry_type;
+  }
+  if (nameCell) {
+    nameCell.textContent = entry.entry_name;
+    nameCell.dataset.value = entry.entry_name;
+    nameCell.dataset.memberId = entry.member_id || '';
+  }
   if (categoryCell) {
     categoryCell.textContent = entry.category_name || 'Unassigned';
     categoryCell.classList.toggle('muted-text', !entry.category_name);
     categoryCell.classList.toggle('pill', !!entry.category_name);
+    categoryCell.dataset.categoryId = entry.category_id || '';
   }
-  if (moneyInCell) moneyInCell.textContent = formatMoney(entry.money_in);
-  if (moneyOutCell) moneyOutCell.textContent = formatMoney(entry.money_out);
-  if (notesCell) notesCell.textContent = entry.notes || '-';
+  if (moneyInCell) {
+    moneyInCell.textContent = formatMoney(entry.money_in);
+    moneyInCell.dataset.value = entry.money_in || 0;
+  }
+  if (moneyOutCell) {
+    moneyOutCell.textContent = formatMoney(entry.money_out);
+    moneyOutCell.dataset.value = entry.money_out || 0;
+  }
+  if (notesCell) {
+    notesCell.textContent = entry.notes || '-';
+    notesCell.dataset.value = entry.notes || '';
+  }
 
+  setRowInputsFromCells(row);
+  refreshCashEntryNameField(row);
+  row.classList.remove('is-editing');
   setInlineStatus(statusElement, true);
 };
 
@@ -142,32 +205,309 @@ const sendJsonForm = async (form) => {
   return payload;
 };
 
-document.querySelectorAll('.bank-category-select[data-autosubmit="true"]').forEach((select) => {
-  select.addEventListener('change', () => {
-    const form = select.closest('form');
-    if (!form) {
-      return;
-    }
+const showBankSettlementSuccess = (form, meeting, settlement) => {
+  const cell = form.closest('.meeting-cell');
+  if (!cell) {
+    return;
+  }
+  const meetingName = meeting?.meeting_name || meeting?.meeting_key || settlement?.meeting_key || '';
+  const settledDate = settlement?.settlement_date || meeting?.meeting_date || '';
+  cell.innerHTML = '';
+  if (meetingName) {
+    const label = document.createElement('span');
+    label.className = 'pill';
+    label.textContent = `Settled to ${meetingName}`;
+    cell.appendChild(label);
+  }
+  if (settledDate) {
+    const note = document.createElement('p');
+    note.className = 'section-note';
+    note.textContent = settledDate;
+    cell.appendChild(note);
+  }
+};
 
-    const status = form.closest('tr')?.querySelector('.bank-row-status');
-    const previousValue = select.dataset.previousValue || select.defaultValue || '';
+const updateBankAllocationSummary = (form) => {
+  const summary = form.querySelector('[data-bank-allocation-summary]');
+  if (!summary) {
+    return;
+  }
 
-    if (status) {
-      status.textContent = '\u2026';
-      status.classList.remove('is-success', 'is-error');
-    }
+  const transactionTotal = Number.parseFloat(form.dataset.transactionAmount || 0);
+  const allocationTotal = Array.from(form.querySelectorAll('[data-bank-allocation-amount]')).reduce(
+    (sum, input) => sum + (Number.parseFloat(input.value || 0) || 0),
+    0,
+  );
 
+  summary.textContent = `Split total ${formatMoney(allocationTotal)} of ${formatMoney(transactionTotal)}`;
+};
+
+const scheduleBankSplitAutosave = (form, status, row, rowStatus) => {
+  if (form._bankSplitSaveTimer) {
+    clearTimeout(form._bankSplitSaveTimer);
+  }
+
+  form._bankSplitSaveTimer = setTimeout(() => {
     sendJsonForm(form)
       .then(() => {
-        select.dataset.previousValue = select.value;
         setInlineStatus(status, true);
+        if (row) {
+          row.classList.remove('needs-attention');
+        }
+        if (rowStatus) {
+          rowStatus.textContent = '';
+          rowStatus.classList.remove('is-needed');
+        }
+        updateBankMeetingControls(form);
       })
       .catch(() => {
-        select.value = previousValue;
+        setInlineStatus(status, false);
+      });
+  }, 250);
+};
+
+const setBankAllocationMode = (form, mode, seedCategoryId = '') => {
+  const single = form.querySelector('[data-bank-allocation-single]');
+  const split = form.querySelector('[data-bank-allocation-split]');
+  const singlePicker = form.querySelector('[data-bank-allocation-single-picker]');
+  const singleAmount = form.querySelector('[data-bank-allocation-single-amount]');
+  const splitInputs = form.querySelectorAll(
+    '[data-bank-allocation-split] [data-bank-allocation-category], [data-bank-allocation-split] [data-bank-allocation-amount]',
+  );
+  const row = form.closest('tr');
+  const splitActions = row?.querySelector('[data-bank-allocation-split-actions]');
+
+  form.dataset.bankSplitMode = mode === 'split' ? 'true' : 'false';
+  if (row) {
+    row.classList.toggle('is-split', mode === 'split');
+  }
+
+  if (single) {
+    single.hidden = mode === 'split';
+  }
+  if (split) {
+    split.hidden = mode !== 'split';
+  }
+  if (splitActions) {
+    splitActions.hidden = mode !== 'split';
+  }
+  if (singlePicker) {
+    if (mode === 'split') {
+      singlePicker.disabled = true;
+      singlePicker.value = '__split__';
+    } else {
+      singlePicker.disabled = false;
+      if (seedCategoryId) {
+        singlePicker.value = seedCategoryId;
+      } else if (singlePicker.value === '__split__') {
+        singlePicker.value = '';
+      }
+    }
+  }
+  if (singleAmount) {
+    singleAmount.value = form.dataset.transactionAmount || '0';
+  }
+
+  splitInputs.forEach((field) => {
+    field.disabled = mode !== 'split';
+  });
+
+  if (mode === 'split') {
+    const rows = form.querySelector('[data-bank-allocation-rows]');
+    if (rows && rows.querySelectorAll('[data-bank-allocation-row]').length === 0) {
+      addBankAllocationRow(form);
+      addBankAllocationRow(form);
+    }
+    updateBankAllocationSummary(form);
+  }
+
+  updateBankMeetingControls(form);
+};
+
+const updateBankMeetingControls = (form) => {
+  const row = form.closest('tr');
+  if (!row) {
+    return;
+  }
+
+  const controls = row.querySelector('[data-bank-meeting-controls]');
+  const hint = row.querySelector('[data-bank-meeting-hint]');
+  const splitMode = form.dataset.bankSplitMode === 'true';
+  const hasCashAllocation = splitMode
+    ? Array.from(form.querySelectorAll('[data-bank-allocation-category]')).some(
+        (select) => select.selectedOptions?.[0]?.dataset.categoryCode === 'CASH',
+      )
+    : form.querySelector('[data-bank-allocation-single-picker]')?.selectedOptions?.[0]?.dataset.categoryCode === 'CASH';
+
+  if (controls) {
+    controls.hidden = !hasCashAllocation;
+  }
+  if (hint) {
+    hint.hidden = hasCashAllocation;
+  }
+};
+
+const addBankAllocationRow = (form, preset = {}) => {
+  const template = form.querySelector('[data-bank-allocation-template]');
+  const rows = form.querySelector('[data-bank-allocation-rows]');
+  if (!template || !rows) {
+    return null;
+  }
+
+  const fragment = template.content.cloneNode(true);
+  const row = fragment.querySelector('[data-bank-allocation-row]');
+  if (!row) {
+    return null;
+  }
+
+  const select = row.querySelector('[data-bank-allocation-category]');
+  const amount = row.querySelector('[data-bank-allocation-amount]');
+  if (select && preset.ledger_category_id) {
+    select.value = String(preset.ledger_category_id);
+  }
+  if (amount) {
+    if (preset.amount !== undefined && preset.amount !== null && preset.amount !== '') {
+      amount.value = Number.parseFloat(preset.amount).toFixed(2);
+    } else {
+      amount.value = '';
+    }
+  }
+
+  rows.appendChild(row);
+  wireBankAllocationRow(form, row);
+  return row;
+};
+
+const wireBankAllocationRow = (form, row) => {
+  const select = row.querySelector('[data-bank-allocation-category]');
+  const amount = row.querySelector('[data-bank-allocation-amount]');
+
+  if (select) {
+    select.addEventListener('change', () => {
+      updateBankMeetingControls(form);
+      updateBankAllocationSummary(form);
+    });
+  }
+
+  if (amount) {
+    amount.addEventListener('input', () => {
+      updateBankAllocationSummary(form);
+    });
+  }
+};
+
+const wireBankAllocationForm = (form) => {
+  const singlePicker = form.querySelector('[data-bank-allocation-single-picker]');
+  const status = form.querySelector('[data-bank-allocation-status]');
+  const row = form.closest('tr');
+  const splitAdd = row?.querySelector('[data-bank-split-add]');
+  const splitCancel = row?.querySelector('[data-bank-split-cancel]');
+  const splitSave = row?.querySelector('[data-bank-split-save]');
+  const rowStatus = form.closest('tr')?.querySelector('.bank-row-status');
+  const splitRows = form.querySelector('[data-bank-allocation-rows]');
+
+  form.dataset.transactionAmount = form.dataset.transactionAmount || '0';
+
+  form.querySelectorAll('[data-bank-allocation-row]').forEach((row) => {
+    wireBankAllocationRow(form, row);
+  });
+
+  if (singlePicker) {
+    let previousValue = singlePicker.value;
+    singlePicker.addEventListener('focus', () => {
+      previousValue = singlePicker.value;
+    });
+    singlePicker.addEventListener('change', () => {
+      const selectedValue = singlePicker.value;
+      if (selectedValue === '__split__') {
+        form.dataset.bankPreviousCategory = previousValue && previousValue !== '__split__' ? previousValue : '';
+        setBankAllocationMode(form, 'split', previousValue && previousValue !== '__split__' ? previousValue : '');
+        return;
+      }
+      const hiddenAmount = form.querySelector('[data-bank-allocation-single-amount]');
+      if (hiddenAmount) {
+        hiddenAmount.value = form.dataset.transactionAmount || '0';
+      }
+      sendJsonForm(form)
+        .then(() => {
+          if (row) {
+            row.classList.remove('needs-attention');
+          }
+          if (rowStatus) {
+            rowStatus.textContent = '';
+            rowStatus.classList.remove('is-needed');
+          }
+          updateBankMeetingControls(form);
+        })
+        .catch(() => {
+          singlePicker.value = previousValue;
+        });
+    });
+  }
+
+  if (splitCancel) {
+    splitCancel.addEventListener('click', () => {
+      const previousCategory = form.dataset.bankPreviousCategory || '';
+      if (splitRows) {
+        splitRows.innerHTML = '';
+      }
+      setBankAllocationMode(form, 'single', previousCategory);
+      updateBankAllocationSummary(form);
+    });
+  }
+
+  if (splitAdd) {
+    splitAdd.addEventListener('click', () => {
+      if (form.dataset.bankSplitMode !== 'true') {
+        return;
+      }
+      const newRow = addBankAllocationRow(form);
+      if (newRow) {
+        const focusTarget = newRow.querySelector('[data-bank-allocation-category]');
+        if (focusTarget) {
+          focusTarget.focus();
+        }
+      }
+    });
+  }
+
+  if (splitSave) {
+    splitSave.addEventListener('click', () => {
+      if (form.dataset.bankSplitMode === 'true') {
+        form.requestSubmit();
+      }
+    });
+  }
+
+  form.addEventListener('submit', (event) => {
+    if (form.dataset.bankSplitMode !== 'true') {
+      return;
+    }
+    event.preventDefault();
+    if (status) {
+      status.textContent = '…';
+      status.classList.remove('is-success', 'is-error');
+    }
+    sendJsonForm(form)
+      .then(() => {
+        setInlineStatus(status, true);
+        if (row) {
+          row.classList.remove('needs-attention');
+        }
+        if (rowStatus) {
+          rowStatus.textContent = '';
+          rowStatus.classList.remove('is-needed');
+        }
+        updateBankMeetingControls(form);
+      })
+      .catch(() => {
         setInlineStatus(status, false);
       });
   });
-});
+
+  setBankAllocationMode(form, form.dataset.bankSplitMode === 'true' ? 'split' : 'single');
+  updateBankAllocationSummary(form);
+};
 
 const cashEntryForms = document.querySelectorAll('[data-cash-entry-form]');
 if (cashEntryForms.length > 0) {
@@ -197,6 +537,52 @@ if (cashEntryForms.length > 0) {
     });
   });
 }
+
+const attachCashRowControls = () => {
+  document.querySelectorAll('[data-cash-entry-row]').forEach((row) => {
+    refreshCashEntryNameField(row);
+    const entryTypeInput = row.querySelector('[data-input-field="entry_type"]');
+    if (entryTypeInput) {
+      entryTypeInput.addEventListener('input', () => {
+        const entryTypeCell = getRowCell(row, 'entry_type');
+        if (entryTypeCell) {
+          entryTypeCell.dataset.value = entryTypeInput.value;
+        }
+        refreshCashEntryNameField(row);
+      });
+    }
+  });
+
+  document.querySelectorAll('[data-cash-entry-edit-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const row = button.closest('tr[data-cash-entry-row]');
+      if (!row) {
+        return;
+      }
+      setRowInputsFromCells(row);
+      refreshCashEntryNameField(row);
+      row.classList.add('is-editing');
+      const firstInput = row.querySelector('.cash-field-input');
+      if (firstInput) {
+        firstInput.focus();
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-cash-entry-edit-cancel]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const row = button.closest('tr[data-cash-entry-row]');
+      if (!row) {
+        return;
+      }
+      row.classList.remove('is-editing');
+      setRowInputsFromCells(row);
+      refreshCashEntryNameField(row);
+    });
+  });
+};
+
+attachCashRowControls();
 
 const cashDeleteForms = document.querySelectorAll('[data-cash-delete-form]');
 if (cashDeleteForms.length > 0) {
@@ -252,6 +638,53 @@ if (cashSettleForms.length > 0) {
         })
         .catch(() => {
           setInlineStatus(status, false);
+      });
+    });
+  });
+}
+
+const bankSettlementForms = document.querySelectorAll('[data-bank-settlement-form]');
+if (bankSettlementForms.length > 0) {
+  bankSettlementForms.forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+
+      const status = form.querySelector('[data-bank-settlement-status]');
+      if (status) {
+        status.textContent = '\u2026';
+        status.classList.remove('is-success', 'is-error');
+      }
+
+      sendJsonForm(form)
+        .then((payload) => {
+          showBankSettlementSuccess(form, payload.meeting, payload.settlement);
+          setInlineStatus(status, true);
+        })
+        .catch(() => {
+          setInlineStatus(status, false);
+        });
+    });
+  });
+}
+
+const bankSettlementUnlinkForms = document.querySelectorAll('[data-bank-settlement-unlink-form]');
+if (bankSettlementUnlinkForms.length > 0) {
+  bankSettlementUnlinkForms.forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+
+      const status = form.closest('.meeting-cell')?.querySelector('[data-bank-settlement-status]');
+      if (status) {
+        status.textContent = '\u2026';
+        status.classList.remove('is-success', 'is-error');
+      }
+
+      sendJsonForm(form)
+        .then(() => {
+          window.location.reload();
+        })
+        .catch(() => {
+          setInlineStatus(status, false);
         });
     });
   });
@@ -261,9 +694,10 @@ wireTableSearch('#memberSearch', '#membersTable tr');
 wireTableSearch('#bankSearch', '#bankTable tr');
 wireTableSearch('#memberPageSearch', '#memberPageTable tr');
 
-document.querySelectorAll('.bank-category-select[data-autosubmit="true"]').forEach((select) => {
-  select.dataset.previousValue = select.value;
+document.querySelectorAll('[data-bank-allocation-form]').forEach((form) => {
+  wireBankAllocationForm(form);
 });
+
 
 const reportToggle = document.querySelector('.report-toggle');
 const headerTop = document.querySelector('.site-header-top');

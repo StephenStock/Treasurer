@@ -95,60 +95,70 @@
           <tbody>
             {% if meeting.entries %}
               {% for entry in meeting.entries %}
-                <tr id="cash-entry-{{ entry.id }}" data-cash-entry-row data-entry-id="{{ entry.id }}">
-                  <td data-field="entry_type">{{ entry.entry_type }}</td>
-                  <td data-field="entry_name">{{ entry.entry_name }}</td>
-                  <td>
-                    {% if entry.category_name %}
-                      <span class="pill" data-field="category_name">{{ entry.category_name }}</span>
-                    {% else %}
-                      <span class="muted-text" data-field="category_name">Unassigned</span>
-                    {% endif %}
+                <tr id="cash-entry-{{ entry.id }}" class="cash-entry-row" data-cash-entry-row data-entry-id="{{ entry.id }}">
+                  <td data-field="entry_type" data-value="{{ entry.entry_type }}">
+                    <span class="cash-field-text">{{ entry.entry_type }}</span>
+                    <input class="cash-field-input" data-input-field="entry_type" type="text" name="entry_type" form="cash-entry-form-{{ entry.id }}" value="{{ entry.entry_type }}" required>
                   </td>
-                  <td class="money-cell" data-field="money_in">{% if entry.money_in %}&pound;{{ "%.2f"|format(entry.money_in) }}{% else %}-{% endif %}</td>
-                  <td class="money-cell" data-field="money_out">{% if entry.money_out %}&pound;{{ "%.2f"|format(entry.money_out) }}{% else %}-{% endif %}</td>
-                  <td data-field="notes">{{ entry.notes or "-" }}</td>
+                  <td data-field="entry_name" data-value="{{ entry.entry_name }}" data-member-id="{{ entry.member_id or '' }}">
+                    <span class="cash-field-text">{{ entry.entry_name }}</span>
+                    <input
+                      class="cash-field-input cash-field-entry-name"
+                      data-input-field="entry_name"
+                      type="text"
+                      name="entry_name"
+                      form="cash-entry-form-{{ entry.id }}"
+                      value="{{ entry.entry_name }}"
+                      required
+                    >
+                    <select
+                      class="cash-field-input cash-field-entry-name-select"
+                      data-input-field="member_id"
+                      name="member_id"
+                      form="cash-entry-form-{{ entry.id }}"
+                    >
+                      <option value="">Name</option>
+                      {% for member in members %}
+                        <option value="{{ member.id }}" {% if entry.member_id == member.id %}selected{% endif %}>{{ member.full_name }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td data-field="category_name" data-category-id="{{ entry.ledger_category_id or '' }}">
+                    {% if entry.category_name %}
+                      <span class="pill cash-field-text" data-field="category_name">{{ entry.category_name }}</span>
+                    {% else %}
+                      <span class="muted-text cash-field-text" data-field="category_name">Unassigned</span>
+                    {% endif %}
+                    <select class="cash-field-input" data-input-field="ledger_category_id" name="ledger_category_id" form="cash-entry-form-{{ entry.id }}" required>
+                      <option value="">Category</option>
+                      {% for category in ledger_categories %}
+                        <option value="{{ category.id }}" {% if entry.ledger_category_id == category.id %}selected{% endif %}>{{ category.display_name }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td class="money-cell" data-field="money_in" data-value="{{ entry.money_in or 0 }}">
+                    <span class="cash-field-text">{% if entry.money_in %}&pound;{{ "%.2f"|format(entry.money_in) }}{% else %}-{% endif %}</span>
+                    <input class="cash-field-input" data-input-field="money_in" type="number" name="money_in" form="cash-entry-form-{{ entry.id }}" min="0" step="0.01" value="{{ '%.2f'|format(entry.money_in or 0) }}">
+                  </td>
+                  <td class="money-cell" data-field="money_out" data-value="{{ entry.money_out or 0 }}">
+                    <span class="cash-field-text">{% if entry.money_out %}&pound;{{ "%.2f"|format(entry.money_out) }}{% else %}-{% endif %}</span>
+                    <input class="cash-field-input" data-input-field="money_out" type="number" name="money_out" form="cash-entry-form-{{ entry.id }}" min="0" step="0.01" value="{{ '%.2f'|format(entry.money_out or 0) }}">
+                  </td>
+                  <td data-field="notes" data-value="{{ entry.notes or '' }}">
+                    <span class="cash-field-text">{{ entry.notes or "-" }}</span>
+                    <input class="cash-field-input" data-input-field="notes" type="text" name="notes" form="cash-entry-form-{{ entry.id }}" value="{{ entry.notes or '' }}">
+                  </td>
                   <td>
                     <div class="cash-actions">
-                      <details class="cash-entry-edit" data-cash-edit-wrapper>
-                        <summary class="button">Edit</summary>
-                        <form class="cash-edit-form" method="post" action="{{ url_for('main.cash_entry_update', entry_id=entry.id) }}" data-cash-entry-form>
-                          <input type="hidden" name="meeting_key" value="{{ meeting.meeting_key }}">
-                          <label>
-                            <span>Item</span>
-                            <input type="text" name="entry_type" value="{{ entry.entry_type }}" required>
-                          </label>
-                          <label>
-                            <span>Name</span>
-                            <input type="text" name="entry_name" value="{{ entry.entry_name }}" required>
-                          </label>
-                          <label>
-                            <span>Category</span>
-                            <select name="ledger_category_id" required>
-                              <option value="">Category</option>
-                              {% for category in ledger_categories %}
-                                <option value="{{ category.id }}" {% if entry.ledger_category_id == category.id %}selected{% endif %}>{{ category.display_name }}</option>
-                              {% endfor %}
-                            </select>
-                          </label>
-                          <label>
-                            <span>In</span>
-                            <input type="number" name="money_in" min="0" step="0.01" value="{{ '%.2f'|format(entry.money_in or 0) }}">
-                          </label>
-                          <label>
-                            <span>Out</span>
-                            <input type="number" name="money_out" min="0" step="0.01" value="{{ '%.2f'|format(entry.money_out or 0) }}">
-                          </label>
-                          <label>
-                            <span>Notes</span>
-                            <input type="text" name="notes" value="{{ entry.notes or '' }}">
-                          </label>
-                          <div class="cash-edit-actions">
-                            <button class="button button-primary" type="submit">Save</button>
-                            <span class="inline-save-status" data-cash-entry-status aria-live="polite"></span>
-                          </div>
-                        </form>
-                      </details>
+                      <button type="button" class="button" data-cash-entry-edit-toggle>Edit</button>
+                      <div class="cash-edit-controls">
+                        <button type="submit" class="button button-primary" form="cash-entry-form-{{ entry.id }}">Save</button>
+                        <button type="button" class="button" data-cash-entry-edit-cancel>Cancel</button>
+                        <span class="inline-save-status" data-cash-entry-status aria-live="polite"></span>
+                      </div>
+                      <form id="cash-entry-form-{{ entry.id }}" class="cash-edit-form" method="post" action="{{ url_for('main.cash_entry_update', entry_id=entry.id) }}" data-cash-entry-form hidden>
+                        <input type="hidden" name="meeting_key" value="{{ meeting.meeting_key }}">
+                      </form>
                       <form method="post" action="{{ url_for('main.cash_entry_delete', entry_id=entry.id) }}" class="cash-delete-form" data-cash-delete-form>
                         <button class="button" type="submit">Delete</button>
                       </form>

@@ -85,12 +85,10 @@ VIRTUAL_ACCOUNT_DEFINITIONS = [
     ("CHARITY", "Charity", 20),
     ("GLASGOW_FRANK", "Glasgow/Frank", 30),
     ("LOI", "LOI", 50),
-    ("SUBS", "Subs", 60),
-    ("DINING", "Dining", 70),
     ("PRE_SUBS", "Pre-Paid Subs", 80),
     ("PRE_DINING", "Pre-Paid Dining", 90),
     ("BENEVOLENT", "Benevolent Fund", 100),
-    ("CENTENARY", "Centeneraty Fund", 110),
+    ("CENTENARY", "Centenary Fund", 110),
 ]
 
 DEFAULT_VIRTUAL_ACCOUNT_OPENING_BALANCES = {
@@ -98,8 +96,6 @@ DEFAULT_VIRTUAL_ACCOUNT_OPENING_BALANCES = {
     "CHARITY": 744.46,
     "GLASGOW_FRANK": 10689.79,
     "LOI": 335.65,
-    "SUBS": 0.0,
-    "DINING": 0.0,
     "PRE_SUBS": 127.745,
     "PRE_DINING": 72.255,
     "BENEVOLENT": 772.17,
@@ -107,12 +103,26 @@ DEFAULT_VIRTUAL_ACCOUNT_OPENING_BALANCES = {
 }
 
 VIRTUAL_ACCOUNT_CATEGORY_MAP = {
-    "MAIN": ["CASH", "INITIATION", "SUMUP", "BANK_CHARGES", "COPPER_POT", "CHAPTER_LOI", "TYLER"],
+    "MAIN": [
+        "CASH",
+        "INITIATION",
+        "SUMUP",
+        "SUBS",
+        "DINING",
+        "VISITOR",
+        "CATERER",
+        "BANK_CHARGES",
+        "COPPER_POT",
+        "CHAPTER_LOI",
+        "TYLER",
+        "UGLE",
+        "PGLE",
+        "ORSETT",
+        "WOOLMKT",
+    ],
     "CHARITY": ["GAVEL", "RAFFLE", "DONATIONS_IN", "DONATIONS_OUT", "RELIEF"],
-    "GLASGOW_FRANK": ["UGLE", "PGLE", "ORSETT", "WOOLMKT"],
+    "GLASGOW_FRANK": [],
     "LOI": ["LOI"],
-    "SUBS": ["SUBS"],
-    "DINING": ["DINING", "VISITOR", "CATERER"],
     "PRE_SUBS": ["PRE_SUBS"],
     "PRE_DINING": ["PRE_DINING"],
     "BENEVOLENT": ["WIDOWS", "ALMONER"],
@@ -398,8 +408,35 @@ def release_runtime_lock(
     return cursor.rowcount > 0
 
 
+def force_release_runtime_lock(
+    db: DatabaseHandle,
+    *,
+    lock_name: str = APP_RUNTIME_LOCK_NAME,
+    release_reason: str = "manual unlock",
+) -> bool:
+    if not table_exists(db, "app_runtime_locks"):
+        return False
+
+    now = _utc_now_iso()
+    cursor = db.execute(
+        """
+        UPDATE app_runtime_locks
+        SET released_at = ?, release_reason = ?, last_seen_at = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE lock_name = ? AND released_at IS NULL
+        """,
+        (now, release_reason, now, lock_name),
+    )
+    return cursor.rowcount > 0
+
+
 def _read_backup_setting(primary_database_path: Path | None = None) -> Path | None:
-    if primary_database_path is None or not primary_database_path.exists():
+    if primary_database_path is None:
+        return None
+
+    try:
+        if not primary_database_path.exists():
+            return None
+    except OSError:
         return None
 
     connection = None
@@ -469,7 +506,11 @@ def resolve_backup_folder_path(primary_database_path: Path | None = None) -> Pat
 
 
 def ensure_database_parent_path(database_path: Path) -> None:
-    database_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Shared UNC paths can already exist or be managed outside this machine.
+        pass
 
 
 def _atomic_copy_file(source_path: Path, destination_path: Path) -> None:
@@ -743,13 +784,13 @@ def _score_bank_transaction_match(
     target_date: str | None,
     details: str,
     transaction_type: str | None,
-    candidate: dict[str, object],
+    candidate: sqlite3.Row,
 ) -> float:
     score = 0.0
     target_details = _normalize_statement_text(details)
-    candidate_details = _normalize_statement_text(candidate.get("details"))
+    candidate_details = _normalize_statement_text(candidate["details"])
     target_type = _normalize_statement_text(transaction_type)
-    candidate_type = _normalize_statement_text(candidate.get("transaction_type"))
+    candidate_type = _normalize_statement_text(candidate["transaction_type"])
 
     if target_details and candidate_details:
         if target_details == candidate_details:
@@ -759,7 +800,7 @@ def _score_bank_transaction_match(
             score += ratio * 60.0
 
         target_tokens = _tokenize_match_text(details)
-        candidate_tokens = _tokenize_match_text(candidate.get("details"))
+        candidate_tokens = _tokenize_match_text(candidate["details"])
         if target_tokens and candidate_tokens:
             overlap = len(target_tokens & candidate_tokens) / len(target_tokens | candidate_tokens)
             score += overlap * 40.0
@@ -770,7 +811,7 @@ def _score_bank_transaction_match(
         else:
             score -= 10.0
 
-    candidate_date = candidate.get("transaction_date")
+    candidate_date = candidate["transaction_date"]
     if target_date and candidate_date:
         try:
             target_dt = datetime.strptime(target_date, "%Y-%m-%d").date()
@@ -780,9 +821,13 @@ def _score_bank_transaction_match(
         except ValueError:
             pass
 
-    if candidate.get("money_in") is not None and candidate.get("money_out") is not None:
-        target_money = float(candidate.get("money_in") or 0) + float(candidate.get("money_out") or 0)
-        score += max(0.0, 5.0 - abs(target_money - (float(candidate.get("money_in") or 0) + float(candidate.get("money_out") or 0))))
+    if candidate["money_in"] is not None and candidate["money_out"] is not None:
+        target_money = float(candidate["money_in"] or 0) + float(candidate["money_out"] or 0)
+        score += max(
+            0.0,
+            5.0
+            - abs(target_money - (float(candidate["money_in"] or 0) + float(candidate["money_out"] or 0))),
+        )
 
     return score
 
@@ -1109,13 +1154,120 @@ def seed_virtual_accounts(db: sqlite3.Connection) -> None:
         """
         INSERT INTO virtual_accounts (code, display_name, sort_order)
         VALUES (?, ?, ?)
-        ON CONFLICT (code) DO NOTHING
+        ON CONFLICT (code) DO UPDATE SET
+            display_name = excluded.display_name,
+            sort_order = excluded.sort_order
         """,
         VIRTUAL_ACCOUNT_DEFINITIONS,
     )
 
 
+def _merge_removed_virtual_accounts_into_main(
+    db: sqlite3.Connection,
+    removed_codes: tuple[str, ...],
+) -> None:
+    if not removed_codes:
+        return
+
+    main_row = db.execute(
+        "SELECT id FROM virtual_accounts WHERE code = ?",
+        ("MAIN",),
+    ).fetchone()
+    if main_row is None:
+        return
+    main_id = main_row["id"]
+
+    placeholders = ",".join(["?"] * len(removed_codes))
+    removed_rows = db.execute(
+        f"""
+        SELECT id
+        FROM virtual_accounts
+        WHERE code IN ({placeholders})
+        """,
+        removed_codes,
+    ).fetchall()
+    if not removed_rows:
+        return
+
+    removed_ids = [row["id"] for row in removed_rows]
+    removed_placeholders = ",".join(["?"] * len(removed_ids))
+
+    balance_rows = db.execute(
+        f"""
+        SELECT reporting_period_id, COALESCE(SUM(opening_balance), 0) AS total_opening_balance
+        FROM virtual_account_balances
+        WHERE virtual_account_id IN ({removed_placeholders})
+        GROUP BY reporting_period_id
+        """,
+        removed_ids,
+    ).fetchall()
+
+    existing_main_balances = {
+        row["reporting_period_id"]: float(row["opening_balance"] or 0)
+        for row in db.execute(
+            "SELECT reporting_period_id, opening_balance FROM virtual_account_balances WHERE virtual_account_id = ?",
+            (main_id,),
+        ).fetchall()
+    }
+
+    for row in balance_rows:
+        reporting_period_id = row["reporting_period_id"]
+        total_opening_balance = existing_main_balances.get(reporting_period_id, 0.0) + float(
+            row["total_opening_balance"] or 0
+        )
+        db.execute(
+            """
+            INSERT INTO virtual_account_balances (reporting_period_id, virtual_account_id, opening_balance)
+            VALUES (?, ?, ?)
+            ON CONFLICT (reporting_period_id, virtual_account_id) DO UPDATE SET opening_balance = excluded.opening_balance
+            """,
+            (reporting_period_id, main_id, total_opening_balance),
+        )
+        existing_main_balances[reporting_period_id] = total_opening_balance
+
+    db.execute(
+        f"""
+        UPDATE virtual_account_category_map
+        SET virtual_account_id = ?
+        WHERE virtual_account_id IN ({removed_placeholders})
+        """,
+        (main_id, *removed_ids),
+    )
+    db.execute(
+        f"""
+        UPDATE virtual_account_transfers
+        SET from_virtual_account_id = ?
+        WHERE from_virtual_account_id IN ({removed_placeholders})
+        """,
+        (main_id, *removed_ids),
+    )
+    db.execute(
+        f"""
+        UPDATE virtual_account_transfers
+        SET to_virtual_account_id = ?
+        WHERE to_virtual_account_id IN ({removed_placeholders})
+        """,
+        (main_id, *removed_ids),
+    )
+    db.execute(
+        f"""
+        DELETE FROM virtual_account_balances
+        WHERE virtual_account_id IN ({removed_placeholders})
+        """,
+        removed_ids,
+    )
+    db.execute(
+        f"""
+        DELETE FROM virtual_accounts
+        WHERE id IN ({removed_placeholders})
+        """,
+        removed_ids,
+    )
+
+
 def consolidate_virtual_accounts(db: sqlite3.Connection) -> None:
+    _merge_removed_virtual_accounts_into_main(db, ("SUBS", "DINING"))
+
     target = db.execute(
         "SELECT id FROM virtual_accounts WHERE code = ?",
         ("GLASGOW_FRANK",),
@@ -1131,7 +1283,8 @@ def consolidate_virtual_accounts(db: sqlite3.Connection) -> None:
         """,
     ).fetchall()
     if not legacy_rows and target_id is not None:
-        seed_virtual_account_category_map(db)
+        if db.execute("SELECT COUNT(*) AS total FROM virtual_account_category_map").fetchone()["total"] == 0:
+            seed_virtual_account_category_map(db)
         return
 
     if target_id is None:
@@ -1195,8 +1348,8 @@ def consolidate_virtual_accounts(db: sqlite3.Connection) -> None:
             legacy_ids,
         )
 
-    db.execute("DELETE FROM virtual_account_category_map")
-    seed_virtual_account_category_map(db)
+    if db.execute("SELECT COUNT(*) AS total FROM virtual_account_category_map").fetchone()["total"] == 0:
+        seed_virtual_account_category_map(db)
 
 
 def seed_virtual_account_category_map(db: sqlite3.Connection) -> None:
@@ -1228,6 +1381,48 @@ def seed_virtual_account_category_map(db: sqlite3.Connection) -> None:
         """,
         mappings,
     )
+
+
+def virtual_account_category_mappings(db: sqlite3.Connection) -> list[dict[str, object]]:
+    rows = db.execute(
+        """
+        SELECT
+            lc.id AS ledger_category_id,
+            lc.code AS ledger_category_code,
+            lc.display_name AS ledger_category_name,
+            COALESCE(va.code, 'MAIN') AS virtual_account_code,
+            COALESCE(va.display_name, 'Main') AS virtual_account_name
+        FROM ledger_categories lc
+        LEFT JOIN virtual_account_category_map vacm ON vacm.ledger_category_id = lc.id
+        LEFT JOIN virtual_accounts va ON va.id = vacm.virtual_account_id
+        ORDER BY lc.direction, lc.sort_order, lc.display_name
+        """,
+    ).fetchall()
+    return [
+        {
+            "ledger_category_id": row["ledger_category_id"],
+            "ledger_category_code": row["ledger_category_code"],
+            "ledger_category_name": row["ledger_category_name"],
+            "virtual_account_code": row["virtual_account_code"],
+            "virtual_account_name": row["virtual_account_name"],
+        }
+        for row in rows
+    ]
+
+
+def replace_virtual_account_category_map(
+    db: sqlite3.Connection,
+    mappings: list[tuple[int, int]],
+) -> None:
+    db.execute("DELETE FROM virtual_account_category_map")
+    if mappings:
+        db.executemany(
+            """
+            INSERT INTO virtual_account_category_map (virtual_account_id, ledger_category_id)
+            VALUES (?, ?)
+            """,
+            mappings,
+        )
 
 
 def ensure_financial_tables(db: sqlite3.Connection) -> None:
@@ -1510,16 +1705,11 @@ def cash_settlement_map(
     return settlement_map
 
 
-def create_cash_settlement(
+def _meeting_cash_totals(
     db: sqlite3.Connection,
     reporting_period_id: int,
-    *,
     meeting_key: str,
-    settlement_date: str,
-    details: str,
-    deposit_amount: float | None = None,
-    notes: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, float]:
     totals = db.execute(
         """
         SELECT
@@ -1530,12 +1720,11 @@ def create_cash_settlement(
         """,
         (reporting_period_id, meeting_key),
     ).fetchone()
-
     total_in = float(totals["total_in"] or 0)
     total_out = float(totals["total_out"] or 0)
     meeting_net = round(total_in - total_out, 2)
 
-    settled_total_row = db.execute(
+    settled_row = db.execute(
         """
         SELECT COALESCE(SUM(net_amount), 0) AS settled_total
         FROM cash_settlements
@@ -1543,8 +1732,93 @@ def create_cash_settlement(
         """,
         (reporting_period_id, meeting_key),
     ).fetchone()
-    settled_total = float(settled_total_row["settled_total"] or 0)
+    settled_total = float(settled_row["settled_total"] or 0)
     remaining_to_settle = round(meeting_net - settled_total, 2)
+
+    return {
+        "total_in": total_in,
+        "total_out": total_out,
+        "meeting_net": meeting_net,
+        "settled_total": settled_total,
+        "remaining_to_settle": remaining_to_settle,
+    }
+
+
+def _insert_cash_settlement_row(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    meeting_key: str,
+    meeting_name: str,
+    settlement_date: str,
+    net_amount: float,
+    bank_transaction_id: int,
+    notes: str | None,
+    *,
+    meeting_totals: dict[str, float] | None = None,
+) -> dict[str, object]:
+    totals = meeting_totals or _meeting_cash_totals(db, reporting_period_id, meeting_key)
+
+    if totals["remaining_to_settle"] <= 0:
+        raise ValueError("That meeting is already fully settled.")
+    if net_amount <= 0:
+        raise ValueError("There is no positive cash balance to settle for that meeting.")
+    if net_amount > totals["remaining_to_settle"]:
+        raise ValueError("That deposit is larger than the remaining cash to settle.")
+
+    existing = db.execute(
+        "SELECT id FROM cash_settlements WHERE bank_transaction_id = ?",
+        (bank_transaction_id,),
+    ).fetchone()
+    if existing:
+        raise ValueError("That bank transaction is already linked to a settlement.")
+
+    inserted = db.execute(
+        """
+        INSERT INTO cash_settlements (
+            reporting_period_id, meeting_key, settlement_date,
+            net_amount, bank_transaction_id, notes
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        RETURNING id
+        """,
+        (
+            reporting_period_id,
+            meeting_key,
+            settlement_date,
+            net_amount,
+            bank_transaction_id,
+            notes,
+        ),
+    ).fetchone()
+
+    return {
+        "id": inserted["id"],
+        "meeting_key": meeting_key,
+        "meeting_name": meeting_name,
+        "settlement_date": settlement_date,
+        "net_amount": net_amount,
+        "bank_transaction_id": bank_transaction_id,
+        "settled_total": round(totals["settled_total"] + net_amount, 2),
+        "remaining_to_settle": round(totals["remaining_to_settle"] - net_amount, 2),
+        "notes": notes,
+    }
+
+
+def create_cash_settlement(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    *,
+    meeting_key: str,
+    settlement_date: str,
+    details: str,
+    deposit_amount: float | None = None,
+    notes: str | None = None,
+) -> dict[str, object]:
+    meeting_totals = _meeting_cash_totals(db, reporting_period_id, meeting_key)
+    total_in = meeting_totals["total_in"]
+    total_out = meeting_totals["total_out"]
+    meeting_net = meeting_totals["meeting_net"]
+    remaining_to_settle = meeting_totals["remaining_to_settle"]
     if remaining_to_settle <= 0:
         raise ValueError("That meeting is already fully settled.")
 
@@ -1627,22 +1901,17 @@ def create_cash_settlement(
         """,
         (bank_transaction_id, category_id_row["id"], net_amount),
     )
-    db.execute(
-        """
-        INSERT INTO cash_settlements (
-            reporting_period_id, meeting_key, settlement_date,
-            net_amount, bank_transaction_id, notes
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            reporting_period_id,
-            meeting_key,
-            settlement_date,
-            net_amount,
-            bank_transaction_id,
-            notes,
-        ),
+
+    settlement = _insert_cash_settlement_row(
+        db,
+        reporting_period_id,
+        meeting_key,
+        meeting_row["meeting_name"],
+        settlement_date,
+        net_amount,
+        bank_transaction_id,
+        notes,
+        meeting_totals=meeting_totals,
     )
 
     return {
@@ -1653,8 +1922,8 @@ def create_cash_settlement(
         "net_amount": net_amount,
         "total_in": total_in,
         "total_out": total_out,
-        "settled_total": settled_total + net_amount,
-        "remaining_to_settle": round(remaining_to_settle - net_amount, 2),
+        "settled_total": settlement["settled_total"],
+        "remaining_to_settle": settlement["remaining_to_settle"],
     }
 
 
@@ -2252,6 +2521,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
             "transfer_out": 0.0,
             "closing_balance": float(row["opening_balance"] or 0),
             "entries": [],
+            "running_total": float(row["opening_balance"] or 0),
         }
         for row in account_rows
     }
@@ -2267,6 +2537,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
             "transfer_in": 0.0,
             "transfer_out": 0.0,
             "closing_balance": 0.0,
+            "running_total": 0.0,
             "entries": [],
         }
 
@@ -2309,14 +2580,18 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                 "transfer_out": 0.0,
                 "closing_balance": 0.0,
                 "entries": [],
+                "running_total": 0.0,
             }
         amount = float(row["amount"] or 0)
         is_income = row["direction"] == "in"
         account = account_index[account_code]
         if is_income:
             account["total_in"] += amount
+            account["running_total"] += amount
         else:
             account["total_out"] += amount
+            account["running_total"] -= amount
+        running = account["running_total"]
         account["entries"].append(
             {
                 "bank_transaction_id": row["bank_transaction_id"],
@@ -2327,6 +2602,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                 "category_name": row["ledger_category_name"],
                 "direction": row["direction"],
                 "amount": amount,
+                "running_total": account["running_total"],
             }
         )
 
@@ -2370,6 +2646,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                 "transfer_out": 0.0,
                 "closing_balance": 0.0,
                 "entries": [],
+                "running_total": 0.0,
             }
 
         amount = float(row["money_in"] or row["money_out"] or 0)
@@ -2377,10 +2654,13 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
         account = account_index[account_code]
         if is_income:
             account["total_in"] += amount
+            account["running_total"] += amount
         else:
             account["total_out"] += amount
+            account["running_total"] -= amount
 
         meeting_name = row["meeting_name"] or row["meeting_key"] or "Cash"
+        entry_running = account["running_total"]
         account["entries"].append(
             {
                 "bank_transaction_id": None,
@@ -2391,6 +2671,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                 "category_name": row["ledger_category_name"] or "Unassigned",
                 "direction": "in" if is_income else "out",
                 "amount": amount,
+                "running_total": entry_running,
             }
         )
 
@@ -2415,6 +2696,9 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
         if subscription_amount > 0:
             account_index["PRE_SUBS"]["transfer_out"] += subscription_amount
             account_index["MAIN"]["transfer_in"] += subscription_amount
+            pre_subs_running = account_index["PRE_SUBS"].get(
+                "running_total", account_index["PRE_SUBS"]["opening_balance"]
+            )
             account_index["PRE_SUBS"]["entries"].append(
                 {
                     "bank_transaction_id": None,
@@ -2425,12 +2709,16 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                     "category_name": "Pre-Paid Subs",
                     "direction": "transfer_out",
                     "amount": subscription_amount,
+                    "running_total": pre_subs_running,
                 }
             )
 
         if dining_amount > 0:
             account_index["PRE_DINING"]["transfer_out"] += dining_amount
             account_index["MAIN"]["transfer_in"] += dining_amount
+            pre_dining_running = account_index["PRE_DINING"].get(
+                "running_total", account_index["PRE_DINING"]["opening_balance"]
+            )
             account_index["PRE_DINING"]["entries"].append(
                 {
                     "bank_transaction_id": None,
@@ -2441,6 +2729,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                     "category_name": "Pre-Paid Dining",
                     "direction": "transfer_out",
                     "amount": dining_amount,
+                    "running_total": pre_dining_running,
                 }
             )
 
@@ -2864,11 +3153,13 @@ def init_app(app) -> None:
                 db.commit()
                 print(f"Imported {imported} bank transactions from the workbook.")
                 return
+        allocation_totals = backfill_bank_allocations_from_workbook(db, reporting_period_id)
         db.commit()
         print(
             "Imported "
             f"{totals['inserted']} new and updated {totals['updated']} bank statement rows "
-            f"from {totals['files']} CSV file(s)."
+            f"from {totals['files']} CSV file(s). "
+            f"Refreshed {allocation_totals['allocations_written']} allocations from the workbook."
         )
 
     @app.cli.command("import-cashbook")
@@ -2897,3 +3188,13 @@ def init_app(app) -> None:
             f"since {lock_row['locked_at']}."
         )
         raise SystemExit(1)
+
+    @app.cli.command("unlock-runtime-lock")
+    def unlock_runtime_lock_command() -> None:
+        db = get_db()
+        if force_release_runtime_lock(db):
+            db.commit()
+            print("Runtime lock cleared.")
+            return
+
+        print("No active runtime lock was found.")

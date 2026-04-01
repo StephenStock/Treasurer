@@ -44,13 +44,12 @@ Using a fresh temporary database created from the current code and workbook:
 
 These match the workbook statement lines.
 
-## Still unresolved / needs your decision
+## Workbook Notes
 
 - Existing database backfill: resolved
   - Decision taken: automatic only when the target tables are empty.
   - Startup now seeds/imports bank and cash workbook data for the current reporting period when those tables are empty.
   - Existing non-empty data is left alone on startup.
-  - Your current working database may still need a one-time manual backfill if it already contains partial older data.
   - Safe manual commands remain:
     - `python -m flask --app app import-bank-statements`
     - `python -m flask --app app import-cashbook`
@@ -60,20 +59,20 @@ These match the workbook statement lines.
   - Added first-class `virtual_account_transfers` data for workbook transfers such as `Glasgow/Frank -> Centenary`.
   - Updated the Statement page balance sheet to use workbook-style account rows with `Xfr In` / `Xfr Out`.
   - Verified on a fresh sandbox database that the statement balance rows now match the workbook, including the final closing total `20732.67`.
+  - Closed for now. We have enough parity for the current workbook workflow.
 
 - Members / Dining Check logic:
   - The workbook uses `Members` and `Dining Check` tabs to drive some member-level values.
   - `PP Subs` / `PP Dining` are now stored as first-class prepayment data.
   - `Dining Check` is intentionally out of scope and can be ignored for the app.
 
-- Workbook formulas that look odd and need confirmation:
-  - `Statement!C24` is `=F47`
-  - `Statement!H29` is `=Bank!AH104`
-  - Both currently evaluate to `0`, but they do not read like intentional business rules.
-  - Decision needed: are those formulas correct, or accidental sheet references?
+- LOI collections are treated separately from Lodge Funds.
+  - `LOI` is the income line.
+  - `LOI-Expenses` is the outgoings line.
+  - That keeps the statement balanced without mixing LOI activity into the main lodge funds.
 
 ## Recommendation
 
 - First backfill the existing database so the current project is using the workbook-derived bank and cash data.
-- Then decide whether we want full workbook balance-sheet parity.
-- If the answer is yes, the cleanest next step is to add an explicit transfer model plus stored pre-paid fields rather than trying to keep inferring those values indirectly.
+- Full workbook balance-sheet parity is closed for now.
+- If we revisit it later, the cleanest next step is still an explicit transfer model plus stored pre-paid fields rather than trying to keep inferring those values indirectly.

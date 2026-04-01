@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import threading
 import tempfile
 from datetime import date, datetime
@@ -16,13 +17,16 @@ from .db import (
     close_db,
     delete_app_setting,
     create_cash_settlement,
+    backfill_bank_allocations_from_workbook,
     get_app_setting,
     get_db,
     get_runtime_lock_status,
     import_bank_statement_exports,
     import_bank_statement_uploads,
     import_bank_transactions_from_workbook,
+    _insert_cash_settlement_row,
     replace_bank_transaction_allocations,
+    replace_virtual_account_category_map,
     seed_meeting_schedule,
     seed_virtual_account_balances,
     consolidate_virtual_accounts,
@@ -33,6 +37,8 @@ from .db import (
     set_app_setting,
     virtual_account_report,
     table_exists,
+    _normalize_member_name,
+    virtual_account_category_mappings,
 )
 
 
@@ -63,15 +69,8 @@ def inject_balance_nav_accounts():
 
 def _bank_page_context():
     db = get_db()
-    allocation_summary_sql = """
-        COALESCE(
-            GROUP_CONCAT(
-                lc.display_name || '|' || printf('%.2f', bta.amount),
-                '||'
-            ),
-            ''
-        ) AS allocation_summary
-    """
+    reporting_period_id = _current_reporting_period_id()
+    schedule = _meeting_schedule()
 
     categories = db.execute(
         """
@@ -82,7 +81,7 @@ def _bank_page_context():
     ).fetchall()
 
     transactions = db.execute(
-        f"""
+        """
         SELECT
             bt.id,
             bt.transaction_date,
@@ -92,46 +91,61 @@ def _bank_page_context():
             bt.money_out,
             bt.running_balance,
             bt.is_opening_balance,
-            {allocation_summary_sql}
+            cs.id AS settlement_id,
+            cs.meeting_key AS settlement_meeting_key,
+            meeting.meeting_name AS settlement_meeting_name,
+            cs.settlement_date AS settlement_date,
+            cs.net_amount AS settlement_net_amount
         FROM bank_transactions bt
-        LEFT JOIN bank_transaction_allocations bta ON bta.bank_transaction_id = bt.id
-        LEFT JOIN ledger_categories lc ON lc.id = bta.ledger_category_id
-        GROUP BY
-            bt.id,
-            bt.transaction_date,
-            bt.details,
-            bt.transaction_type,
-            bt.money_in,
-            bt.money_out,
-            bt.running_balance,
-            bt.is_opening_balance
+        LEFT JOIN cash_settlements cs ON cs.bank_transaction_id = bt.id
+        LEFT JOIN meetings meeting
+          ON meeting.reporting_period_id = bt.reporting_period_id
+         AND meeting.meeting_key = cs.meeting_key
+        WHERE bt.reporting_period_id = ?
         ORDER BY
             bt.transaction_date DESC,
             bt.id DESC
-        """
+        """,
+        (reporting_period_id,),
     ).fetchall()
+
+    transaction_ids = [transaction["id"] for transaction in transactions]
+    allocations_by_transaction: dict[int, list[dict[str, object]]] = {}
+    if transaction_ids:
+        placeholders = ",".join(["?"] * len(transaction_ids))
+        allocation_rows = db.execute(
+            f"""
+            SELECT
+                bta.bank_transaction_id,
+                bta.ledger_category_id,
+                bta.amount,
+                lc.code AS ledger_category_code,
+                lc.display_name AS ledger_category_name
+            FROM bank_transaction_allocations bta
+            JOIN ledger_categories lc ON lc.id = bta.ledger_category_id
+            WHERE bta.bank_transaction_id IN ({placeholders})
+            ORDER BY bta.bank_transaction_id, bta.id
+            """,
+            transaction_ids,
+        ).fetchall()
+
+        for row in allocation_rows:
+            allocations_by_transaction.setdefault(row["bank_transaction_id"], []).append(
+                {
+                    "ledger_category_id": row["ledger_category_id"],
+                    "ledger_category_code": row["ledger_category_code"],
+                    "ledger_category_name": row["ledger_category_name"],
+                    "amount": float(row["amount"] or 0),
+                }
+            )
 
     prepared_transactions = []
     for transaction in transactions:
-        allocations = []
-        summary = transaction["allocation_summary"] or ""
-        if summary:
-            for item in summary.split("||"):
-                if not item:
-                    continue
-                label, amount = item.split("|", 1)
-                allocations.append({"label": label, "amount": float(amount)})
-
-        selected_category_id = db.execute(
-            """
-            SELECT bta.ledger_category_id
-            FROM bank_transaction_allocations bta
-            WHERE bta.bank_transaction_id = ?
-            ORDER BY bta.id
-            LIMIT 1
-            """,
-            (transaction["id"],),
-        ).fetchone()
+        transaction_allocations = allocations_by_transaction.get(transaction["id"], [])
+        has_cash_allocation = any(
+            allocation["ledger_category_code"] == "CASH" for allocation in transaction_allocations
+        )
+        allocations = transaction_allocations
 
         prepared_transactions.append(
             {
@@ -144,15 +158,24 @@ def _bank_page_context():
                 "running_balance": transaction["running_balance"],
                 "is_opening_balance": transaction["is_opening_balance"],
                 "allocations": allocations,
-                "selected_category_id": (
-                    selected_category_id["ledger_category_id"] if selected_category_id else None
+                "is_cash_category": has_cash_allocation,
+                "allocation_total": round(
+                    sum(float(allocation["amount"] or 0) for allocation in transaction_allocations),
+                    2,
                 ),
-                "needs_attention": not allocations and not transaction["is_opening_balance"],
+                "needs_attention": (
+                    not transaction_allocations and not transaction["is_opening_balance"]
+                ),
                 "net_amount": (
                     float(transaction["money_in"])
                     if transaction["money_in"] > 0
                     else float(transaction["money_out"])
                 ),
+                "settlement_id": transaction["settlement_id"],
+                "settlement_meeting_key": transaction["settlement_meeting_key"],
+                "settlement_meeting_name": transaction["settlement_meeting_name"],
+                "settlement_date": transaction["settlement_date"],
+                "settlement_amount": float(transaction["settlement_net_amount"] or 0),
             }
         )
 
@@ -162,21 +185,38 @@ def _bank_page_context():
             COUNT(*) AS total_transactions,
             COALESCE(SUM(money_in), 0) AS total_money_in,
             COALESCE(SUM(money_out), 0) AS total_money_out,
-            COALESCE(SUM(CASE WHEN bt.is_opening_balance = 0 AND allocation_counts.count_per_transaction IS NULL THEN 1 ELSE 0 END), 0)
-                AS uncategorised_transactions
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN bt.is_opening_balance = 0 AND allocation_counts.count_per_transaction IS NULL
+                        THEN 1
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS uncategorised_transactions
         FROM bank_transactions bt
         LEFT JOIN (
             SELECT bank_transaction_id, COUNT(*) AS count_per_transaction
             FROM bank_transaction_allocations
             GROUP BY bank_transaction_id
         ) allocation_counts ON allocation_counts.bank_transaction_id = bt.id
-        """
+        WHERE bt.reporting_period_id = ?
+        """,
+        (reporting_period_id,),
     ).fetchone()
+
+    meeting_summaries = _cash_meeting_summaries(
+        db,
+        reporting_period_id,
+        meeting_schedule=schedule,
+    )
 
     return {
         "bank_transactions": prepared_transactions,
         "ledger_categories": categories,
         "bank_summary": summary,
+        "meeting_summaries": meeting_summaries,
     }
 
 
@@ -482,6 +522,25 @@ def _current_reporting_period_id() -> int:
     return row["id"] if row else 1
 
 
+def _current_reporting_period_label() -> str:
+    db = get_db()
+    row = db.execute(
+        "SELECT label FROM reporting_periods WHERE is_current = 1 ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return row["label"] if row and row["label"] else "2025-26"
+
+
+def _statement_year_label() -> str:
+    label = _current_reporting_period_label()
+    if "-" in label:
+        parts = label.split("-", 1)
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            if len(parts[0]) == 4 and len(parts[1]) == 2:
+                return f"{parts[0]}-{parts[0][:2]}{parts[1]}"
+            return f"{parts[0]}-{parts[1]}"
+    return label
+
+
 def _meeting_schedule():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -494,6 +553,49 @@ def _meeting_schedule():
         """,
         (reporting_period_id,),
     ).fetchall()
+
+
+def _cash_meeting_summaries(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    meeting_schedule: list[dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    settlement_map = cash_settlement_map(db, reporting_period_id)
+    entry_totals = db.execute(
+        """
+        SELECT
+            meeting_key,
+            COALESCE(SUM(money_in), 0) AS total_in,
+            COALESCE(SUM(money_out), 0) AS total_out
+        FROM cashbook_entries
+        WHERE reporting_period_id = ?
+        GROUP BY meeting_key
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+    totals_map = {row["meeting_key"]: row for row in entry_totals}
+    schedule = meeting_schedule or _meeting_schedule()
+    summaries = []
+    for meeting in schedule:
+        meeting_key = meeting["meeting_key"]
+        totals = totals_map.get(meeting_key)
+        total_in = float(totals["total_in"] or 0) if totals else 0.0
+        total_out = float(totals["total_out"] or 0) if totals else 0.0
+        meeting_net = round(total_in - total_out, 2)
+        settled_total = float(settlement_map.get(meeting_key, {}).get("settled_total", 0))
+        remaining_to_bank = round(meeting_net - settled_total, 2)
+        summaries.append(
+            {
+                "meeting_key": meeting_key,
+                "meeting_name": meeting["meeting_name"],
+                "meeting_date": meeting["meeting_date"],
+                "meeting_type": meeting["meeting_type"],
+                "net_to_bank": meeting_net,
+                "settled_total": settled_total,
+                "remaining_to_bank": remaining_to_bank,
+            }
+        )
+    return summaries
 
 
 def _cash_page_context():
@@ -509,6 +611,22 @@ def _cash_page_context():
         ORDER BY direction, sort_order, display_name
         """
     ).fetchall()
+
+    member_rows = db.execute(
+        """
+        SELECT id, full_name
+        FROM members
+        ORDER BY full_name
+        """
+    ).fetchall()
+    members = [
+        {"id": row["id"], "full_name": row["full_name"]}
+        for row in member_rows
+    ]
+    member_lookup = {
+        _normalize_member_name(member["full_name"]): member["id"]
+        for member in members
+    }
 
     entry_rows = db.execute(
         """
@@ -540,21 +658,27 @@ def _cash_page_context():
 
     blocks = []
     for meeting in schedule:
-        meeting_entries = [
-            {
-                "id": row["id"],
-                "entry_type": row["entry_type"],
-                "entry_name": row["entry_name"],
-                "member_id": row["member_id"],
-                "ledger_category_id": row["ledger_category_id"],
-                "category_name": row["category_name"],
-                "money_in": row["money_in"],
-                "money_out": row["money_out"],
-                "notes": row["notes"],
-            }
-            for row in entry_rows
-            if row["meeting_key"] == meeting["meeting_key"]
-        ]
+        meeting_entries = []
+        for row in entry_rows:
+            if row["meeting_key"] != meeting["meeting_key"]:
+                continue
+            normalized_entry_type = (row["entry_type"] or "").strip().lower()
+            resolved_member_id = row["member_id"]
+            if not resolved_member_id and normalized_entry_type == "member":
+                resolved_member_id = member_lookup.get(_normalize_member_name(row["entry_name"]))
+            meeting_entries.append(
+                {
+                    "id": row["id"],
+                    "entry_type": row["entry_type"],
+                    "entry_name": row["entry_name"],
+                    "member_id": resolved_member_id,
+                    "ledger_category_id": row["ledger_category_id"],
+                    "category_name": row["category_name"],
+                    "money_in": row["money_in"],
+                    "money_out": row["money_out"],
+                    "notes": row["notes"],
+                }
+            )
         blocks.append(
             {
                 "meeting_key": meeting["meeting_key"],
@@ -578,6 +702,7 @@ def _cash_page_context():
         "meeting_blocks": blocks,
         "meeting_schedule": schedule,
         "ledger_categories": categories,
+        "members": members,
     }
 
 
@@ -723,11 +848,6 @@ def dashboard():
     runtime_lock_status = _runtime_lock_context()
 
     stats = {
-        "members": db.execute("SELECT COUNT(*) AS total FROM members").fetchone()["total"],
-        "events": db.execute("SELECT COUNT(*) AS total FROM events").fetchone()["total"],
-        "open_messages": db.execute(
-            "SELECT COUNT(*) AS total FROM messages WHERE status = 'open'"
-        ).fetchone()["total"],
         "dues_outstanding": db.execute(
             """
             SELECT COALESCE(
@@ -741,69 +861,56 @@ def dashboard():
         ).fetchone()["total"],
     }
 
-    recent_members = db.execute(
-        """
-        SELECT m.membership_number, m.full_name, mt.code AS member_type, m.email, m.status
-        FROM members m
-        LEFT JOIN member_types mt ON mt.id = m.member_type_id
-        ORDER BY full_name
-        LIMIT 5
-        """
-    ).fetchall()
-
-    dues = db.execute(
+    arrears_rows = db.execute(
         """
         SELECT
+            m.membership_number,
             m.full_name,
-            d.year,
+            mt.code AS member_type,
+            m.status,
             d.subscription_due,
             d.subscription_paid,
             d.dining_due,
             d.dining_paid,
             (d.subscription_due - d.subscription_paid) AS subscription_outstanding,
-            (d.dining_due - d.dining_paid) AS dining_outstanding,
-            d.status
+            (d.dining_due - d.dining_paid) AS dining_outstanding
         FROM dues d
         JOIN members m ON m.id = d.member_id
-        ORDER BY d.status DESC, m.full_name
+        LEFT JOIN member_types mt ON mt.id = m.member_type_id
+        WHERE (d.subscription_due - d.subscription_paid) > 0
+           OR (d.dining_due - d.dining_paid) > 0
+        ORDER BY
+            (d.subscription_due - d.subscription_paid) + (d.dining_due - d.dining_paid) DESC,
+            m.full_name
         """
     ).fetchall()
 
-    upcoming_events = db.execute(
-        """
-        SELECT id, title, event_date, meal_name, meal_price, booking_deadline, notes
-        FROM events
-        ORDER BY event_date
-        """
-    ).fetchall()
+    arrears_members = [
+        {
+            "membership_number": row["membership_number"],
+            "full_name": row["full_name"],
+            "member_type": row["member_type"] or "-",
+            "status": row["status"],
+            "subscription_due": float(row["subscription_due"] or 0),
+            "subscription_paid": float(row["subscription_paid"] or 0),
+            "dining_due": float(row["dining_due"] or 0),
+            "dining_paid": float(row["dining_paid"] or 0),
+            "subscription_outstanding": float(row["subscription_outstanding"] or 0),
+            "dining_outstanding": float(row["dining_outstanding"] or 0),
+            "total_outstanding": float(
+                (row["subscription_outstanding"] or 0) + (row["dining_outstanding"] or 0)
+            ),
+        }
+        for row in arrears_rows
+    ]
 
-    bookings = db.execute(
-        """
-        SELECT e.title, m.full_name, b.seats, b.dietary_notes, b.status
-        FROM bookings b
-        JOIN events e ON e.id = b.event_id
-        JOIN members m ON m.id = b.member_id
-        ORDER BY e.event_date, m.full_name
-        """
-    ).fetchall()
-
-    messages = db.execute(
-        """
-        SELECT sender_name, sender_role, subject, body, status, created_at
-        FROM messages
-        ORDER BY created_at DESC
-        """
-    ).fetchall()
+    stats["arrears_count"] = len(arrears_members)
 
     return render_template(
         "dashboard.html",
         active_page="home",
         stats=stats,
-        recent_members=recent_members,
-        dues=dues,
-        upcoming_events=upcoming_events,
-        bookings=bookings,
-        messages=messages,
+        arrears_members=arrears_members,
         **backup_status,
         **runtime_lock_status,
     )
@@ -902,11 +1009,21 @@ def bank_import():
                 flash("No bank statement rows needed importing.", "info")
             return redirect(url_for("main.bank"))
 
+    allocation_totals = {"transactions_matched": 0, "allocations_written": 0}
+    if totals["files"] > 0:
+        allocation_totals = backfill_bank_allocations_from_workbook(db, reporting_period_id)
+
     db.commit()
     if totals["inserted"] or totals["updated"]:
         source_label = "uploaded file(s)" if has_uploads else "CSV file(s)"
+        if allocation_totals["transactions_matched"]:
+            allocation_note = (
+                f" Refreshed {allocation_totals['allocations_written']} allocations from the workbook."
+            )
+        else:
+            allocation_note = ""
         flash(
-            f"Imported {totals['inserted']} new and updated {totals['updated']} bank statement rows from {totals['files']} {source_label}.",
+            f"Imported {totals['inserted']} new and updated {totals['updated']} bank statement rows from {totals['files']} {source_label}.{allocation_note}",
             "success",
         )
     else:
@@ -914,10 +1031,53 @@ def bank_import():
     return redirect(url_for("main.bank"))
 
 
+@main_bp.post("/bank/rebuild")
+def bank_rebuild_from_workbook():
+    db = get_db()
+    reporting_period_id = _current_reporting_period_id()
+    workbook_path = _find_existing_workbook()
+
+    if workbook_path is None:
+        flash("No workbook was found to rebuild the bank ledger from.", "error")
+        return redirect(url_for("main.bank"))
+
+    db.execute(
+        "DELETE FROM cash_settlements WHERE reporting_period_id = ?",
+        (reporting_period_id,),
+    )
+    db.execute(
+        """
+        DELETE FROM bank_transaction_allocations
+        WHERE bank_transaction_id IN (
+            SELECT id
+            FROM bank_transactions
+            WHERE reporting_period_id = ?
+        )
+        """,
+        (reporting_period_id,),
+    )
+    db.execute(
+        "DELETE FROM bank_transactions WHERE reporting_period_id = ?",
+        (reporting_period_id,),
+    )
+
+    imported = import_bank_transactions_from_workbook(db, reporting_period_id, workbook_path)
+    db.commit()
+    flash(
+        f"Rebuilt {imported} bank transactions from the workbook.",
+        "success" if imported else "info",
+    )
+    return redirect(url_for("main.bank"))
+
+
 @main_bp.post("/bank/<int:transaction_id>/assign")
 def bank_assign(transaction_id: int):
     db = get_db()
-    category_id = request.form.get("ledger_category_id", type=int)
+    category_ids = request.form.getlist("allocation_category_id")
+    allocation_amounts = request.form.getlist("allocation_amount")
+    if not category_ids and request.form.get("ledger_category_id") is not None:
+        category_ids = [request.form.get("ledger_category_id", "")]  # Backward compatibility.
+        allocation_amounts = [request.form.get("amount", "")]
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     def _reply(message: str, status_code: int = 200):
@@ -935,9 +1095,6 @@ def bank_assign(transaction_id: int):
         (transaction_id,),
     ).fetchone()
 
-    if category_id is None:
-        return _reply("Choose a category.", 400)
-
     if transaction is None:
         return _reply("That bank transaction could not be found.", 404)
 
@@ -945,14 +1102,332 @@ def bank_assign(transaction_id: int):
     if max_amount <= 0:
         return _reply("That row cannot be assigned a category.", 400)
 
-    replace_bank_transaction_allocations(db, transaction_id, [(category_id, max_amount)])
+    allocations: list[tuple[int, float]] = []
+    for index, category_id_raw in enumerate(category_ids):
+        allocation_amount_raw = allocation_amounts[index] if index < len(allocation_amounts) else ""
+        category_id_raw = str(category_id_raw).strip()
+        if not category_id_raw:
+            continue
+        try:
+            category_id = int(category_id_raw)
+        except ValueError:
+            return _reply("Choose a valid category.", 400)
+
+        try:
+            allocation_amount = round(float(str(allocation_amount_raw).replace(",", "").strip()), 2)
+        except ValueError:
+            return _reply("Enter a valid allocation amount.", 400)
+
+        if allocation_amount <= 0:
+            continue
+        allocations.append((category_id, allocation_amount))
+
+    if not allocations:
+        return _reply("Add at least one allocation.", 400)
+
+    allocation_total = round(sum(amount for _category_id, amount in allocations), 2)
+    if abs(allocation_total - round(max_amount, 2)) > 0.01:
+        return _reply(
+            f"Allocations must total £{max_amount:.2f} for this transaction.",
+            400,
+        )
+
+    replace_bank_transaction_allocations(db, transaction_id, allocations)
     db.commit()
-    return _reply("Bank transaction category saved.")
+    return _reply("Bank transaction allocations saved.")
+
+
+@main_bp.post("/bank/<int:transaction_id>/settle")
+def bank_transaction_settle(transaction_id: int):
+    db = get_db()
+    reporting_period_id = _current_reporting_period_id()
+    meeting_key = request.form.get("meeting_key", "").strip().upper()
+    settlement_date = request.form.get("settlement_date", "").strip()
+    notes = request.form.get("notes", "").strip() or None
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def _reply(message: str, status_code: int = 200, payload: dict | None = None):
+        if is_ajax:
+            body: dict[str, object] = {"ok": status_code < 400, "message": message}
+            if payload:
+                body.update(payload)
+            return body, status_code
+        flash(message, "success" if status_code < 400 else "error")
+        return redirect(url_for("main.bank"))
+
+    if not meeting_key:
+        return _reply("Choose a meeting to settle.", 400)
+
+    meeting_row = db.execute(
+        """
+        SELECT meeting_name, meeting_date
+        FROM meetings
+        WHERE reporting_period_id = ? AND meeting_key = ?
+        """,
+        (reporting_period_id, meeting_key),
+    ).fetchone()
+    if meeting_row is None:
+        return _reply("That meeting could not be found.", 404)
+
+    transaction = db.execute(
+        """
+        SELECT id, money_in, money_out, transaction_date
+        FROM bank_transactions
+        WHERE id = ? AND reporting_period_id = ?
+        """,
+        (transaction_id, reporting_period_id),
+    ).fetchone()
+    if transaction is None:
+        return _reply("That bank transaction could not be found.", 404)
+
+    net_amount = float(transaction["money_in"] or 0)
+    if net_amount <= 0:
+        return _reply("Only deposit rows can be linked to a meeting.", 400)
+
+    cash_allocation = db.execute(
+        """
+        SELECT 1
+        FROM bank_transaction_allocations bta
+        JOIN ledger_categories lc ON lc.id = bta.ledger_category_id
+        WHERE bta.bank_transaction_id = ? AND lc.code = 'CASH'
+        LIMIT 1
+        """,
+        (transaction_id,),
+    ).fetchone()
+    if cash_allocation is None:
+        return _reply("Only cash rows can be linked to a meeting.", 400)
+
+    settlement_date_value = settlement_date or transaction["transaction_date"] or date.today().isoformat()
+
+    try:
+        settlement = _insert_cash_settlement_row(
+            db,
+            reporting_period_id,
+            meeting_key,
+            meeting_row["meeting_name"],
+            settlement_date_value,
+            net_amount,
+            transaction_id,
+            notes,
+        )
+    except ValueError as exc:
+        return _reply(str(exc), 400)
+    except RuntimeError as exc:
+        return _reply(str(exc), 500)
+
+    db.commit()
+    return _reply(
+        "Bank transaction linked to meeting cash.",
+        payload={
+            "settlement": settlement,
+            "meeting": {
+                "meeting_key": meeting_key,
+                "meeting_name": meeting_row["meeting_name"],
+                "meeting_date": meeting_row["meeting_date"],
+                "remaining_to_bank": settlement["remaining_to_settle"],
+            },
+            "transaction_id": transaction_id,
+        },
+    )
+
+
+@main_bp.post("/bank/<int:transaction_id>/unsettle")
+def bank_transaction_unsettle(transaction_id: int):
+    db = get_db()
+    reporting_period_id = _current_reporting_period_id()
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def _reply(message: str, status_code: int = 200, payload: dict | None = None):
+        if is_ajax:
+            body: dict[str, object] = {"ok": status_code < 400, "message": message}
+            if payload:
+                body.update(payload)
+            return body, status_code
+        flash(message, "success" if status_code < 400 else "error")
+        return redirect(url_for("main.bank"))
+
+    settlement = db.execute(
+        """
+        SELECT id, meeting_key, settlement_date, net_amount
+        FROM cash_settlements
+        WHERE bank_transaction_id = ? AND reporting_period_id = ?
+        """,
+        (transaction_id, reporting_period_id),
+    ).fetchone()
+    if settlement is None:
+        return _reply("That settlement could not be found.", 404)
+
+    db.execute(
+        "DELETE FROM cash_settlements WHERE id = ?",
+        (settlement["id"],),
+    )
+    db.commit()
+    return _reply(
+        "Bank settlement unlinked.",
+        payload={
+            "transaction_id": transaction_id,
+            "meeting_key": settlement["meeting_key"],
+        },
+    )
 
 
 @main_bp.route("/statement")
 def statement():
-    return render_template("statement.html", active_page="statement", **_statement_page_context())
+    return render_template(
+        "statement.html",
+        active_page="statement",
+        statement_lodge_name="Stanford-le-Hope Lodge No. 5217",
+        statement_year_label=_statement_year_label(),
+        **_statement_page_context(),
+    )
+
+
+def _auditors_page_context():
+    db = get_db()
+    statement_context = _statement_page_context()
+    account_histories = virtual_account_report(db)
+    audit_sections = []
+    for section in statement_context["statement_sections"]:
+        audit_sections.append(
+            {
+                "title": section["title"],
+                "income_total": section["income_total"],
+                "expense_total": section["expense_total"],
+                "net_total": round(section["income_total"] - section["expense_total"], 2),
+            }
+        )
+
+    audit_checks = [
+        "Do the totals on this page add up to the printed statement?",
+        "Does the closing bank balance match the bank statement?",
+        "Are all cash settlements recorded and banked?",
+        "Are there any unexplained or uncategorised rows?",
+        "Do the opening and closing account balances look sensible?",
+    ]
+
+    reporting_period_id = _current_reporting_period_id()
+    cash_rows = db.execute(
+        """
+        SELECT
+            m.meeting_name,
+            m.meeting_date,
+            COALESCE(SUM(c.money_in), 0) AS money_in,
+            COALESCE(SUM(c.money_out), 0) AS money_out
+        FROM meetings m
+        LEFT JOIN cashbook_entries c
+            ON c.meeting_key = m.meeting_key
+            AND c.reporting_period_id = m.reporting_period_id
+        WHERE m.reporting_period_id = ?
+        GROUP BY m.meeting_name, m.meeting_date, m.sort_order
+        ORDER BY m.sort_order
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+
+    cash_detail_rows = db.execute(
+        """
+        SELECT
+            c.id AS cash_entry_id,
+            m.sort_order,
+            m.meeting_date,
+            m.meeting_name,
+            COALESCE(c.money_in, 0) AS money_in,
+            COALESCE(c.money_out, 0) AS money_out,
+            c.entry_type,
+            c.entry_name,
+            lc.code AS ledger_category_code,
+            lc.display_name AS ledger_category_name
+        FROM cashbook_entries c
+        LEFT JOIN meetings m
+          ON c.meeting_key = m.meeting_key
+         AND c.reporting_period_id = m.reporting_period_id
+        LEFT JOIN ledger_categories lc ON lc.id = c.ledger_category_id
+        WHERE c.reporting_period_id = ?
+        ORDER BY m.sort_order, c.id
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+    cash_book_details = []
+    running_balance = 0.0
+    for row in cash_detail_rows:
+        income = float(row["money_in"] or 0)
+        expense = float(row["money_out"] or 0)
+        delta = income - expense
+        running_balance += delta
+        cash_book_details.append(
+            {
+                "meeting_name": row["meeting_name"] or "Cash",
+                "meeting_date": row["meeting_date"],
+                "entry_type": row["entry_type"],
+                "entry_name": row["entry_name"],
+                "category_name": row["ledger_category_name"] or row["ledger_category_code"] or "Unassigned",
+                "income": income,
+                "expense": expense,
+                "running": running_balance,
+            }
+        )
+
+    return {
+        **statement_context,
+        "statement_lodge_name": "Stanford-le-Hope Lodge No. 5217",
+        "statement_year_label": _statement_year_label(),
+        "audit_sections": audit_sections,
+        "audit_checks": audit_checks,
+        "account_histories": account_histories,
+        "cash_statements": [
+            {
+                "meeting": row["meeting_name"],
+                "date": row["meeting_date"],
+                "money_in": float(row["money_in"] or 0),
+                "money_out": float(row["money_out"] or 0),
+                "net": float((row["money_in"] or 0) - (row["money_out"] or 0)),
+            }
+            for row in cash_rows
+        ],
+        "cash_book_details": cash_book_details,
+        "member_statuses": [
+            {
+                "membership_number": row["membership_number"],
+                "full_name": row["full_name"],
+                "member_type": row["member_type"] or "Unknown",
+                "status": row["status"],
+                "subscription_due": row["subscription_due"] or 0.0,
+                "subscription_paid": row["subscription_paid"] or 0.0,
+                "dining_due": row["dining_due"] or 0.0,
+                "dining_paid": row["dining_paid"] or 0.0,
+            }
+            for row in db.execute(
+                """
+                SELECT
+                    m.membership_number,
+                    m.full_name,
+                    mt.code AS member_type,
+                    m.status,
+                    d.subscription_due,
+                    d.subscription_paid,
+                    d.dining_due,
+                    d.dining_paid
+                FROM members m
+                LEFT JOIN member_types mt ON mt.id = m.member_type_id
+                LEFT JOIN dues d
+                    ON d.member_id = m.id
+                   AND d.reporting_period_id = ?
+                ORDER BY m.membership_number
+                """,
+                (reporting_period_id,),
+            ).fetchall()
+        ]
+
+    }
+
+
+@main_bp.route("/auditors")
+def auditors():
+    return render_template(
+        "auditors.html",
+        active_page="auditors",
+        **_auditors_page_context(),
+    )
 
 
 @main_bp.route("/balances/")
@@ -1070,6 +1545,7 @@ def cash_entry_add():
     meeting_key = request.form.get("meeting_key", "").strip().upper()
     entry_type = request.form.get("entry_type", "").strip()
     entry_name = request.form.get("entry_name", "").strip()
+    member_id = request.form.get("member_id", type=int)
     category_id = request.form.get("ledger_category_id", type=int)
     money_in = request.form.get("money_in", type=float) or 0.0
     money_out = request.form.get("money_out", type=float) or 0.0
@@ -1126,6 +1602,7 @@ def cash_entry_update(entry_id: int):
     meeting_key = request.form.get("meeting_key", "").strip().upper()
     entry_type = request.form.get("entry_type", "").strip()
     entry_name = request.form.get("entry_name", "").strip()
+    member_id = request.form.get("member_id", type=int)
     category_id = request.form.get("ledger_category_id", type=int)
     money_in = request.form.get("money_in", type=float) or 0.0
     money_out = request.form.get("money_out", type=float) or 0.0
@@ -1141,6 +1618,17 @@ def cash_entry_update(entry_id: int):
         flash(message, "success" if status_code < 400 else "error")
         return redirect(url_for("main.cash"))
 
+    entry_type_normalized = entry_type.lower()
+    if entry_type_normalized == "member" and member_id is not None:
+        member_row = db.execute(
+            "SELECT full_name FROM members WHERE id = ?",
+            (member_id,),
+        ).fetchone()
+        if member_row:
+            entry_name = member_row["full_name"]
+        else:
+            member_id = None
+
     if meeting_key not in {"SEPTEMBER", "NOVEMBER", "JANUARY", "MARCH", "MAY"}:
         return _reply("Choose a valid meeting block.", 400)
     if not entry_type or not entry_name or category_id is None:
@@ -1151,7 +1639,7 @@ def cash_entry_update(entry_id: int):
     updated = db.execute(
         """
         UPDATE cashbook_entries
-        SET meeting_key = ?, entry_type = ?, entry_name = ?, ledger_category_id = ?,
+        SET meeting_key = ?, entry_type = ?, entry_name = ?, member_id = ?, ledger_category_id = ?,
             money_in = ?, money_out = ?, notes = ?
         WHERE id = ? AND reporting_period_id = ?
         """,
@@ -1159,6 +1647,7 @@ def cash_entry_update(entry_id: int):
             meeting_key,
             entry_type,
             entry_name,
+            member_id,
             category_id,
             money_in,
             money_out,
@@ -1184,6 +1673,7 @@ def cash_entry_update(entry_id: int):
                         "entry_name": entry_name,
                         "category_id": category_id,
                         "category_name": category_name["display_name"] if category_name else None,
+                        "member_id": member_id,
                         "money_in": money_in,
                         "money_out": money_out,
                         "notes": notes,
@@ -1337,6 +1827,8 @@ def settings():
     current_app.config["BACKUP_DATABASE"] = str(resolve_backup_database_path(Path(current_app.config["DATABASE"])))
     seed_virtual_account_balances(db, reporting_period_id)
     consolidate_virtual_accounts(db)
+    category_mappings = virtual_account_category_mappings(db)
+    virtual_accounts = virtual_account_report(db)
 
     if request.method == "POST":
         backup_folder_path = request.form.get("backup_folder_path", "").strip()
@@ -1385,6 +1877,31 @@ def settings():
                 (balance_value, reporting_period_id, account["code"]),
             )
 
+        account_lookup = {
+            account["code"]: account["id"]
+            for account in db.execute(
+                "SELECT id, code FROM virtual_accounts ORDER BY sort_order, display_name"
+            ).fetchall()
+        }
+        category_rows = db.execute(
+            """
+            SELECT id, code
+            FROM ledger_categories
+            ORDER BY direction, sort_order, display_name
+            """
+        ).fetchall()
+        category_account_pairs: list[tuple[int, int]] = []
+        for category in category_rows:
+            selected_code = request.form.get(f"category_{category['id']}_virtual_account", "MAIN").strip().upper()
+            account_id = account_lookup.get(selected_code)
+            if account_id is None:
+                account_id = account_lookup.get("MAIN")
+            if account_id is None:
+                continue
+            category_account_pairs.append((account_id, category["id"]))
+
+        replace_virtual_account_category_map(db, category_account_pairs)
+
         db.commit()
         flash("Settings updated.", "success")
         return redirect(url_for("main.settings"))
@@ -1394,7 +1911,8 @@ def settings():
         active_page="settings",
         **backup_status,
         meeting_schedule=_meeting_schedule(),
-        virtual_accounts=virtual_account_report(db),
+        virtual_accounts=virtual_accounts,
+        category_account_mappings=category_mappings,
     )
 
 

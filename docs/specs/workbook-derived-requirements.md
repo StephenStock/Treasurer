@@ -187,6 +187,7 @@ Required categorisation capabilities:
 - Caterer
 - Bank Charges
 - Widows
+- LOI-Expenses
 
 Requirements:
 
@@ -243,6 +244,7 @@ Expenditure categories inferred from `Statement`:
 - PGLE
 - Orsett Masonic Hall rent
 - LOI rent at Woolmarket
+- LOI-Expenses
 - Tyler fee
 - Bank charges
 
@@ -345,7 +347,7 @@ These points are inferred from the workbook and should be confirmed before imple
 - Whether subscriptions and dining should be billed separately or as a combined incoming payment
 - Whether UGLE, PGLE, Orsett, and Woolmarket are always fixed category outputs
 - Whether `LOI`, `Chapter LOI`, `Relief`, `Widows`, and `Donations` need separate reporting treatment
-- Whether the statement should be printable in a formal year-end format
+- Resolved: the statement is now printable in a formal year-end format and can be saved as a PDF from the browser
 
 ## Implementation notes
 
@@ -355,5 +357,6 @@ Parts of this requirements set are now live in the app, including:
 - bank import and categorisation
 - cash entry by meeting
 - linked cash-to-bank settlement flow
+- formal statement header and browser PDF export path
 
 This document should stay focused on workbook intent and business rules. Delivery status should be tracked in the roadmap and the runbook.

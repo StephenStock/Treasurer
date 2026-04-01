@@ -156,6 +156,7 @@ The workbook behavior is represented this way:
 - Caterer
 - Bank Charges
 - Widows
+- LOI-Expenses
 
 ## Operational checks
 

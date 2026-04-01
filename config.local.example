@@ -4,3 +4,4 @@
 
 TREASURER_DATABASE=\\DEN\TreasurerDB\Treasurer.db
 # TREASURER_BACKUP_DATABASE=C:\Users\YourName\Documents\Treasurer Backups\Treasurer.backup.db
+# TREASURER_RUNTIME_LOCK=0

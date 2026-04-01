@@ -131,6 +131,41 @@
 
       <div class="settings-divider"></div>
 
+      <div class="panel-heading">
+        <div>
+          <h3>Virtual Account Mapping</h3>
+          <p class="section-note">Choose which internal account each bank category feeds into on the balance sheet. Leaving a row on Main keeps it in the lodge account.</p>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="settings-table compact-ledger">
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th>Virtual Account</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for mapping in category_account_mappings %}
+              <tr>
+                <td>{{ mapping.ledger_category_name }}</td>
+                <td>
+                  <select name="category_{{ mapping.ledger_category_id }}_virtual_account">
+                    {% for account in virtual_accounts %}
+                      <option value="{{ account.code }}" {% if account.code == mapping.virtual_account_code %}selected{% endif %}>
+                        {{ account.display_name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="settings-divider"></div>
+
       <div class="table-scroll">
         <table class="settings-table compact-ledger">
           <thead>

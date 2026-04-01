@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Treasurer Portal{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+  {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{{ active_page or '' }}">
   <header class="site-header">
     <div class="site-header-top {% if active_page == 'balances' %}reports-open{% endif %}">
       <div class="site-header-main-line">
@@ -28,6 +29,7 @@
             >
               Reports
             </button>
+            <a class="nav-link {% if active_page == 'auditors' %}is-active{% endif %}" href="{{ url_for('main.auditors') }}">Auditors</a>
             <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
             <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
             <button

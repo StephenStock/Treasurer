@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+
+{% block title %}Auditors | Treasurer Portal{% endblock %}
+
+{% block extra_head %}
+  <style>
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 4mm;
+      }
+
+      body.auditors .auditors-history-table {
+        font-size: 6pt;
+      }
+
+      body.auditors .auditors-history-table td:nth-child(1),
+      body.auditors .auditors-history-table th:nth-child(1) {
+        width: 11%;
+      }
+
+      body.auditors .auditors-history-table td:nth-child(2),
+      body.auditors .auditors-history-table th:nth-child(2) {
+        width: 54%;
+      }
+
+      body.auditors .auditors-history-table td:nth-child(3),
+      body.auditors .auditors-history-table th:nth-child(3) {
+        width: 11%;
+      }
+
+      body.auditors .auditors-history-table td:nth-child(4),
+      body.auditors .auditors-history-table th:nth-child(4) {
+        width: 12%;
+      }
+
+      body.auditors .auditors-history-table td:nth-child(5),
+      body.auditors .auditors-history-table th:nth-child(5) {
+        width: 12%;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="statement-header-card">
+    <div class="statement-header-copy">
+      <p class="statement-header-crest">{{ statement_lodge_name }}</p>
+      <h2>Auditors' Review Pack for the Year {{ statement_year_label }}</h2>
+      <p class="auditors-header-note">A simple review sheet for lodge members to confirm the accounts add up and agree to the supporting records.</p>
+    </div>
+    <div class="statement-header-actions no-print">
+      <p class="section-note">Use the button below to open the browser print dialog and save a PDF copy.</p>
+      <button class="button button-primary" type="button" onclick="window.print()">Save as PDF</button>
+    </div>
+  </section>
+
+  <section class="stats-grid auditors-stats">
+    <article class="stat-card">
+      <span>Total Income</span>
+      <strong>&pound;{{ "%.2f"|format(income_total) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Total Expense</span>
+      <strong>&pound;{{ "%.2f"|format(expense_total) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Surplus / Deficit</span>
+      <strong>&pound;{{ "%.2f"|format(net_result) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Closing Bank Balance</span>
+      <strong>{% if latest_bank_balance is not none %}&pound;{{ "%.2f"|format(latest_bank_balance) }}{% else %}-{% endif %}</strong>
+    </article>
+  </section>
+
+  <section class="panel auditors-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>What You Are Checking</h3>
+        <p class="section-note">Lodge audit committees are expected to review the books, receipts, and reconciliations and compare beginning balances plus income minus expenses against the Treasurer’s ending balances, following standard lodge audit practice.</p>
+      </div>
+    </div>
+
+    <div class="auditors-checklist-grid">
+      {% for item in audit_checks %}
+        <article class="auditors-check-item">
+          <div class="auditors-check-box"></div>
+          <p>{{ item }}</p>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel auditors-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Statement Summary</h3>
+        <p class="section-note">A simple summary of the four statement sections, useful for anyone who only wants to check the totals.</p>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="statement-table compact-ledger auditors-summary-table">
+        <colgroup>
+          <col class="statement-label-col">
+          <col class="statement-money-col">
+          <col class="statement-money-col">
+          <col class="statement-money-col">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Income</th>
+            <th>Expense</th>
+            <th>Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for section in audit_sections %}
+            <tr>
+              <td>{{ section.title }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(section.income_total) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(section.expense_total) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(section.net_total) }}</td>
+            </tr>
+          {% endfor %}
+          <tr class="totals-row">
+            <td>Total</td>
+            <td class="money-cell">&pound;{{ "%.2f"|format(income_total) }}</td>
+            <td class="money-cell">&pound;{{ "%.2f"|format(expense_total) }}</td>
+            <td class="money-cell">&pound;{{ "%.2f"|format(net_result) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel auditors-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Cash Book Totals</h3>
+        <p class="section-note">Five meeting-ledgers that feed the bank deposits, showing money in, money out, and the net retained.</p>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="statement-table compact-ledger auditors-cash-table">
+        <colgroup>
+          <col class="auditors-meeting-col">
+          <col class="auditors-date-col">
+          <col class="auditors-income-col">
+          <col class="auditors-expense-col">
+          <col class="auditors-running-col">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Meeting</th>
+            <th>Date</th>
+            <th class="money-cell">Income</th>
+            <th class="money-cell">Expense</th>
+            <th class="money-cell">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for statement in cash_statements %}
+            <tr>
+              <td>{{ statement.meeting }}</td>
+              <td>{{ statement.date }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(statement.money_in) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(statement.money_out) }}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(statement.net) }}</td>
+            </tr>
+          {% endfor %}
+        {% if cash_statements|length == 0 %}
+          <tr>
+            <td colspan="5">No cash statements found for this period.</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+  <section class="panel auditors-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Cash Book Details</h3>
+        <p class="section-note">Every cash entry recorded for this reporting period, helping auditors trace deposits and expenses back to their source.</p>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="statement-table compact-ledger auditors-cash-table auditors-cash-details-table">
+        <colgroup>
+          <col class="auditors-meeting-col">
+          <col class="auditors-date-col">
+          <col class="auditors-details-col">
+          <col class="auditors-category-col">
+          <col class="auditors-income-col">
+          <col class="auditors-expense-col">
+          <col class="auditors-running-col">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Meeting</th>
+            <th>Date</th>
+            <th>Entry</th>
+            <th>Category</th>
+            <th class="money-cell">Income</th>
+            <th class="money-cell">Expense</th>
+            <th class="money-cell">Running</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in cash_book_details %}
+            <tr>
+              <td>{{ entry.meeting_name }}</td>
+              <td>{{ entry.meeting_date }}</td>
+              <td>{{ entry.entry_type }}{% if entry.entry_name %}: {{ entry.entry_name }}{% endif %}</td>
+              <td>{{ entry.category_name }}</td>
+              <td class="money-cell">{% if entry.income %}&pound;{{ "%.2f"|format(entry.income) }}{% endif %}</td>
+              <td class="money-cell">{% if entry.expense %}&pound;{{ "%.2f"|format(entry.expense) }}{% endif %}</td>
+              <td class="money-cell">&pound;{{ "%.2f"|format(entry.running) }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="7">No cash book entries recorded for this period.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel auditors-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Member Payment Status</h3>
+        <p class="section-note">Each member’s current dues and dining payments versus what was billed this reporting period.</p>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="statement-table compact-ledger auditors-members-table">
+        <colgroup>
+          <col class="auditors-member-col">
+          <col class="auditors-name-col">
+          <col class="auditors-type-col">
+          <col class="auditors-status-col">
+          <col class="auditors-income-col">
+          <col class="auditors-expense-col">
+          <col class="auditors-income-col">
+          <col class="auditors-expense-col">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Member #</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th class="money-cell">Subs Due</th>
+            <th class="money-cell">Subs Paid</th>
+            <th class="money-cell">Dining Due</th>
+            <th class="money-cell">Dining Paid</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for member in member_statuses %}
+            <tr>
+              <td>{{ member.membership_number }}</td>
+              <td>{{ member.full_name }}</td>
+              <td>{{ member.member_type }}</td>
+              <td>{{ member.status }}</td>
+              <td class="money-cell">{% if member.subscription_due %}&pound;{{ "%.2f"|format(member.subscription_due) }}{% endif %}</td>
+              <td class="money-cell">{% if member.subscription_paid %}&pound;{{ "%.2f"|format(member.subscription_paid) }}{% endif %}</td>
+              <td class="money-cell">{% if member.dining_due %}&pound;{{ "%.2f"|format(member.dining_due) }}{% endif %}</td>
+              <td class="money-cell">{% if member.dining_paid %}&pound;{{ "%.2f"|format(member.dining_paid) }}{% endif %}</td>
+            </tr>
+          {% endfor %}
+          {% if member_statuses|length == 0 %}
+            <tr>
+              <td colspan="8">No member data found for this period.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel auditors-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Account Histories</h3>
+        <p class="section-note">Full transaction history for each lodge account, showing every allocated bank and cash entry behind the totals.</p>
+      </div>
+    </div>
+
+    <div class="auditors-history-list">
+      {% for account in account_histories %}
+        <article class="auditors-history-card">
+          <div class="panel-heading auditors-history-heading">
+            <div>
+              <h4>{{ account.display_name }}</h4>
+              <p class="section-note">
+                Opening &pound;{{ "%.2f"|format(account.opening_balance) }}
+                | In &pound;{{ "%.2f"|format(account.total_in) }}
+                | Out &pound;{{ "%.2f"|format(account.total_out) }}
+                | Xfr In &pound;{{ "%.2f"|format(account.transfer_in) }}
+                | Xfr Out &pound;{{ "%.2f"|format(account.transfer_out) }}
+                | Closing &pound;{{ "%.2f"|format(account.closing_balance) }}
+              </p>
+            </div>
+          </div>
+
+          <div class="table-scroll">
+            <table class="statement-table compact-ledger auditors-history-table">
+              <colgroup>
+                <col class="auditors-date-col">
+                <col class="auditors-details-col">
+                <col class="auditors-category-col">
+                <col class="auditors-income-col">
+                <col class="auditors-expense-col">
+                <col class="auditors-running-col">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Details</th>
+                  <th>Category</th>
+                  <th class="money-cell">Income</th>
+                  <th class="money-cell">Expense</th>
+                  <th class="money-cell">Running</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if account.entries %}
+                  {% for entry in account.entries %}
+                    <tr>
+                      <td>{{ entry.transaction_date or '' }}</td>
+                      <td class="auditors-entry-details">{{ entry.details }}</td>
+                      <td class="auditors-entry-category">{{ entry.category_name }}</td>
+                      <td class="money-cell">{% if entry.direction == 'in' %}&pound;{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
+                      <td class="money-cell">{% if entry.direction == 'out' %}&pound;{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
+                      <td class="money-cell">
+                        {% if entry.running_total is defined %}
+                          &pound;{{ "%.2f"|format(entry.running_total) }}
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="4">No activity recorded for this account.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel statement-panel statement-signoff-panel auditors-signoff-panel">
+    <div class="statement-signoff-grid">
+      <article class="statement-signoff-card">
+        <h4>Treasurer</h4>
+        <div class="statement-signoff-field">
+          <span>Name</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Date</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Signature</span>
+          <div class="statement-signoff-line statement-signoff-line-large"></div>
+        </div>
+      </article>
+      <article class="statement-signoff-card">
+        <h4>Auditor 1</h4>
+        <div class="statement-signoff-field">
+          <span>Name</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Date</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Signature</span>
+          <div class="statement-signoff-line statement-signoff-line-large"></div>
+        </div>
+      </article>
+      <article class="statement-signoff-card">
+        <h4>Auditor 2</h4>
+        <div class="statement-signoff-field">
+          <span>Name</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Date</span>
+          <div class="statement-signoff-line"></div>
+        </div>
+        <div class="statement-signoff-field">
+          <span>Signature</span>
+          <div class="statement-signoff-line statement-signoff-line-large"></div>
+        </div>
+      </article>
+    </div>
+  </section>
+{% endblock %}

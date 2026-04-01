@@ -46,6 +46,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         SECRET_KEY="change-me",
         DATABASE=str(default_database_path()),
         BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", "")),
+        RUNTIME_LOCK_ENABLED=os.environ.get("TREASURER_RUNTIME_LOCK", "").strip().lower() in {"1", "true", "yes", "on"},
     )
 
     runtime_identity = runtime_lock_identity()
@@ -83,6 +84,9 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.before_request
     def enforce_runtime_lock():
+        if not current_app.config.get("RUNTIME_LOCK_ENABLED", False):
+            return None
+
         if request.endpoint == "static":
             return None
 
