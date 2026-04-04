@@ -19,6 +19,22 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+# Shell scripts often pick up harmless drift (chmod +x, CRLF). Reset them to HEAD before pull.
+echo "==> Resetting scripts/*.sh to match last commit (avoids blocked git pull)"
+git restore \
+  scripts/backup_db.sh \
+  scripts/deploy.sh \
+  scripts/healthcheck.sh \
+  scripts/restore_db.sh \
+  scripts/rollback.sh \
+  2>/dev/null || git checkout HEAD -- \
+  scripts/backup_db.sh \
+  scripts/deploy.sh \
+  scripts/healthcheck.sh \
+  scripts/restore_db.sh \
+  scripts/rollback.sh \
+  2>/dev/null || true
+
 if ! git diff-index --quiet HEAD -- 2>/dev/null; then
   echo "Deploy aborted: this folder has uncommitted changes to tracked files." >&2
   echo "Fix or discard them first, then try again. Example: git status" >&2

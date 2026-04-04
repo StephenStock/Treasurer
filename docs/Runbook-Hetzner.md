@@ -72,7 +72,7 @@ bash scripts/deploy.sh
 
 This script:
 
-1. Refuses to run if **Git** shows **uncommitted edits** to tracked files (so a half-edited file on the server cannot block `git pull` again — fix with `git status` / `git restore` first).
+1. Resets **`scripts/*.sh`** to the last commit (so harmless drift—often **`chmod +x`** or line endings—does not block `git pull`). If **other** tracked files are still modified, the script stops and shows `git status`.
 2. Runs a **pre-deploy database backup** (`scripts/backup_db.sh`).
 3. Runs **`git pull --ff-only`** (only fast-forward; fails if the server’s branch has diverged).
 4. Runs **`docker compose up -d --build`** (rebuild app image and restart containers).
