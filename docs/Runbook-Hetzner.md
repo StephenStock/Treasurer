@@ -88,6 +88,17 @@ To skip the backup step (not recommended): `DEPLOY_SKIP_BACKUP=1 bash scripts/de
 
 If `bash scripts/deploy.sh` says “Permission denied”, use `bash` as above (no execute bit needed).
 
+### Deploy from your Windows PC
+
+The repo root has **`deploy.bat`**. It runs the same server script over **SSH** (no need to type `ssh` and `cd` by hand).
+
+1. Install **Git for Windows** or ensure **OpenSSH Client** is available (`ssh` in a Command Prompt).
+2. Set up **SSH key** login to the server (recommended) or you’ll be prompted for a password each time.
+3. Edit **`deploy.bat`** if the server address is not **`91.99.170.73`**, or run: `deploy.bat your.ip.or.hostname`
+4. Double‑click **`deploy.bat`** or run it from **Command Prompt** in the project folder.
+
+Push your changes to **GitHub** before deploying, or `git pull` on the server will have nothing new to fetch.
+
 ## Rollback procedure
 
 ```bash
