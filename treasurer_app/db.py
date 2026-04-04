@@ -1345,14 +1345,28 @@ def _sheet_target_by_name(archive: zipfile.ZipFile, sheet_name: str) -> str | No
     return None
 
 
+def _normalize_xlsx_rel_target(target: str | None) -> str | None:
+    """Resolve workbook.xml.rels Target to a path inside the xlsx zip.
+
+    Targets are usually relative to ``xl/`` (e.g. ``worksheets/sheet1.xml``). Some tools
+    emit ``/xl/...`` or ``xl/...``, which must not be combined with a second ``xl/`` prefix.
+    """
+    if not target:
+        return None
+    t = target.strip().replace("\\", "/").lstrip("/")
+    if t.startswith("xl/"):
+        return t
+    return f"xl/{t}"
+
+
 def _read_sheet_rows(workbook_path: Path, sheet_name: str) -> list[tuple[int, dict[str, str]]]:
     with zipfile.ZipFile(workbook_path) as archive:
-        target = _sheet_target_by_name(archive, sheet_name)
+        target = _normalize_xlsx_rel_target(_sheet_target_by_name(archive, sheet_name))
         if target is None:
             return []
 
         shared_strings = _load_shared_strings(archive)
-        sheet_xml = ET.fromstring(archive.read(f"xl/{target}"))
+        sheet_xml = ET.fromstring(archive.read(target))
         sheet_data = sheet_xml.find(f"{{{_MAIN_NS}}}sheetData")
         if sheet_data is None:
             return []
