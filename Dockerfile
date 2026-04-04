@@ -24,10 +24,12 @@ RUN useradd --create-home --uid 1000 appuser \
     && chown -R appuser:appuser /app /data
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.sh \
+    && chmod +x /docker-entrypoint.sh
 
 EXPOSE 8000
 
 USER root
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# Invoke via bash so CRLF in a mis-checked-out script cannot break the shebang.
+ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "2", "--timeout", "120", "app:app"]
