@@ -921,79 +921,10 @@ def dashboard():
     backup_status = _backup_status_context()
     runtime_lock_status = _runtime_lock_context()
 
-    stats = {
-        "dues_outstanding": db.execute(
-            """
-            SELECT COALESCE(
-                SUM((subscription_due - subscription_paid) + (dining_due - dining_paid)),
-                0
-            ) AS total
-            FROM dues
-            WHERE subscription_due > subscription_paid
-               OR dining_due > dining_paid
-            """
-        ).fetchone()["total"],
-    }
-
-    arrears_rows = db.execute(
-        """
-        SELECT
-            m.membership_number,
-            m.full_name,
-            mt.code AS member_type,
-            m.status,
-            d.subscription_due,
-            d.subscription_paid,
-            d.dining_due,
-            d.dining_paid,
-            (d.subscription_due - d.subscription_paid) AS subscription_outstanding,
-            (d.dining_due - d.dining_paid) AS dining_outstanding
-        FROM dues d
-        JOIN members m ON m.id = d.member_id
-        LEFT JOIN member_types mt ON mt.id = m.member_type_id
-        WHERE (d.subscription_due - d.subscription_paid) > 0
-           OR (d.dining_due - d.dining_paid) > 0
-        ORDER BY
-            (d.subscription_due - d.subscription_paid) + (d.dining_due - d.dining_paid) DESC,
-            m.full_name
-        """
-    ).fetchall()
-
-    arrears_members = [
-        {
-            "membership_number": row["membership_number"],
-            "full_name": row["full_name"],
-            "member_type": row["member_type"] or "-",
-            "status": row["status"],
-            "subscription_due": float(row["subscription_due"] or 0),
-            "subscription_paid": float(row["subscription_paid"] or 0),
-            "dining_due": float(row["dining_due"] or 0),
-            "dining_paid": float(row["dining_paid"] or 0),
-            "subscription_outstanding": float(row["subscription_outstanding"] or 0),
-            "dining_outstanding": float(row["dining_outstanding"] or 0),
-            "total_outstanding": float(
-                (row["subscription_outstanding"] or 0) + (row["dining_outstanding"] or 0)
-            ),
-        }
-        for row in arrears_rows
-    ]
-
-    arrears_totals = {
-        "subscription_due": round(sum(member["subscription_due"] for member in arrears_members), 2),
-        "subscription_paid": round(sum(member["subscription_paid"] for member in arrears_members), 2),
-        "dining_due": round(sum(member["dining_due"] for member in arrears_members), 2),
-        "dining_paid": round(sum(member["dining_paid"] for member in arrears_members), 2),
-        "total_outstanding": round(sum(member["total_outstanding"] for member in arrears_members), 2),
-    }
-
-    stats["arrears_count"] = len(arrears_members)
-
     return render_template(
         "dashboard.html",
         active_page="home",
-        stats=stats,
-        arrears_members=arrears_members,
-        arrears_totals=arrears_totals,
+        lodge_display_name=_lodge_display_name(db),
         **backup_status,
         **runtime_lock_status,
     )

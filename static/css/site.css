@@ -558,6 +558,75 @@ button,
   overflow: hidden;
 }
 
+.dashboard-welcome .panel-heading {
+  margin-bottom: 0.85rem;
+}
+
+.dashboard-welcome-body {
+  padding-top: 0.15rem;
+}
+
+.dashboard-welcome-lead {
+  margin: 0 0 1.25rem;
+  font-size: 1.02rem;
+  line-height: 1.55;
+}
+
+.dashboard-welcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.dashboard-welcome-card {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-strong);
+}
+
+.dashboard-welcome-card h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1.1rem;
+}
+
+.dashboard-welcome-card h4 a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.dashboard-welcome-card h4 a:hover {
+  text-decoration: underline;
+}
+
+.dashboard-welcome-card .section-note {
+  margin-top: 0;
+  margin-bottom: 0.65rem;
+}
+
+.dashboard-welcome-card ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.dashboard-welcome-card li + li {
+  margin-top: 0.45rem;
+}
+
+.dashboard-welcome-footer {
+  margin: 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.dashboard-welcome-footer a {
+  font-weight: 600;
+}
+
 .bank-panel {
   padding-top: 0.85rem;
 }

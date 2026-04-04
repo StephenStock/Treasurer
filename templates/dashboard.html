@@ -3,58 +3,50 @@
 {% block title %}Dashboard | Treasurer Portal{% endblock %}
 
 {% block content %}
-  <section class="panel">
+  <section class="panel dashboard-welcome">
     <div class="panel-heading">
       <div>
-        <h3>Members in Arrears</h3>
-        <p class="section-note">Only members who owe subscriptions or dining charges for the current reporting period are displayed.</p>
+        <h3>Welcome</h3>
+        <p class="section-note">
+          You’re in the right place to run the lodge accounts alongside your workbook. Use the navigation for each area — below is a quick orientation, especially for <strong>Bank</strong> and <strong>Cash</strong>.
+        </p>
       </div>
     </div>
-    <div class="table-scroll">
-      <table class="dues-table">
-        <thead>
-          <tr>
-            <th>No.</th>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Status</th>
-            <th>Subs Due</th>
-            <th>Subs Paid</th>
-            <th>Dining Due</th>
-            <th>Dining Paid</th>
-            <th>Outstanding</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for member in arrears_members %}
-            <tr>
-              <td>{{ member.membership_number }}</td>
-              <td>{{ member.full_name }}</td>
-              <td>{{ member.member_type }}</td>
-              <td><span class="pill">{{ member.status }}</span></td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(member.subscription_due) }}</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(member.subscription_paid) }}</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(member.dining_due) }}</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(member.dining_paid) }}</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(member.total_outstanding) }}</td>
-            </tr>
-          {% else %}
-            <tr>
-              <td colspan="9">No members currently in arrears.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr class="totals-row">
-            <td colspan="4">Total</td>
-            <td class="money-cell">&pound;{{ "%.2f"|format(arrears_totals.subscription_due) }}</td>
-            <td class="money-cell">&pound;{{ "%.2f"|format(arrears_totals.subscription_paid) }}</td>
-            <td class="money-cell">&pound;{{ "%.2f"|format(arrears_totals.dining_due) }}</td>
-            <td class="money-cell">&pound;{{ "%.2f"|format(arrears_totals.dining_paid) }}</td>
-            <td class="money-cell">&pound;{{ "%.2f"|format(arrears_totals.total_outstanding) }}</td>
-          </tr>
-        </tfoot>
-      </table>
+
+    <div class="dashboard-welcome-body">
+      <p class="dashboard-welcome-lead">
+        {% if lodge_display_name %}
+          <strong>{{ lodge_display_name }}</strong> —
+        {% endif %}
+        This portal keeps bank activity, cash meetings, members, and reporting in one place. Take your time: nothing here replaces your judgement or the physical records auditors may ask for.
+      </p>
+
+      <div class="dashboard-welcome-grid">
+        <article class="dashboard-welcome-card">
+          <h4><a href="{{ url_for('main.bank') }}">Bank</a></h4>
+          <p class="section-note">Your main link to the lodge bank account.</p>
+          <ul>
+            <li>Import <strong>CSV exports</strong> from online banking when you’re ready to bring new transactions in.</li>
+            <li>Review the <strong>statement list</strong>, categories, and running balance so the books stay aligned with the bank.</li>
+            <li>Use allocations and virtual accounts to match lodge practice — the <strong>Statement</strong> page pulls from what you record here.</li>
+          </ul>
+        </article>
+
+        <article class="dashboard-welcome-card">
+          <h4><a href="{{ url_for('main.cash') }}">Cash</a></h4>
+          <p class="section-note">Meeting nights and cash in hand.</p>
+          <ul>
+            <li>Record <strong>cash taken in and paid out</strong> around meetings (subs, dining, raffles, and the rest).</li>
+            <li>When cash is <strong>banked</strong>, tie it through to the bank side so nothing sits unexplained between cash and the account.</li>
+            <li>Keep each meeting’s story clear — it makes the year-end pack and handover much easier.</li>
+          </ul>
+        </article>
+      </div>
+
+      <p class="dashboard-welcome-footer section-note">
+        For <strong>members, subs, and dining</strong> in detail (including who is behind), use <a href="{{ url_for('main.members') }}">Members</a>.
+        For a full pack for brethren, see <a href="{{ url_for('main.auditors') }}">Auditors</a> and <a href="{{ url_for('main.statement') }}">Statement</a>.
+      </p>
     </div>
   </section>
 {% endblock %}
