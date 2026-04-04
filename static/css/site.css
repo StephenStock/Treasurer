@@ -818,22 +818,26 @@ table {
   margin-top: 0;
 }
 
-.auditors-members-row-shortfall td {
+.auditors-members-row-shortfall td,
+.members-table tr.members-row-arrears td {
   background: rgb(255 235 238 / 0.85);
 }
 
-.auditors-members-table .auditors-money-behind {
+.auditors-members-table .auditors-money-behind,
+.members-table .members-money-behind {
   background: rgb(255 205 210 / 0.95);
   color: #8b1538;
   font-weight: 600;
 }
 
 @media (prefers-color-scheme: dark) {
-  .auditors-members-row-shortfall td {
+  .auditors-members-row-shortfall td,
+  .members-table tr.members-row-arrears td {
     background: rgb(120 40 50 / 0.35);
   }
 
-  .auditors-members-table .auditors-money-behind {
+  .auditors-members-table .auditors-money-behind,
+  .members-table .members-money-behind {
     background: rgb(140 50 60 / 0.55);
     color: #ffcdd2;
   }

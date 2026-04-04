@@ -7,7 +7,7 @@
     <div class="panel-heading">
       <div>
         <h3>Member Register</h3>
-        <p class="section-note">This is the operational list, not just a dashboard sample. It shows all members and the current year dues row.</p>
+        <p class="section-note">This is the operational list, not just a dashboard sample. It shows all members and the current year dues row. Rows with money still owed (due minus paid) are highlighted like on the Auditors page.</p>
       </div>
       <input type="search" id="memberPageSearch" placeholder="Filter members">
     </div>
@@ -27,12 +27,12 @@
         </thead>
         <tbody id="memberPageTable">
           {% for member in members %}
-            <tr>
+            <tr class="{% if member.has_payment_shortfall %}members-row-arrears{% endif %}">
               <td>{{ member.membership_number }}</td>
               <td>{{ member.full_name }}</td>
               <td>{{ member.member_type or "-" }}</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(member.subscription_due or 0) }}</td>
-              <td class="money-cell">&pound;{{ "%.2f"|format(member.dining_due or 0) }}</td>
+              <td class="money-cell{% if member.subscription_outstanding > 0 %} members-money-behind{% endif %}">&pound;{{ "%.2f"|format(member.subscription_due or 0) }}</td>
+              <td class="money-cell{% if member.dining_outstanding > 0 %} members-money-behind{% endif %}">&pound;{{ "%.2f"|format(member.dining_due or 0) }}</td>
               <td><span class="pill">{{ member.dues_status or member.status }}</span></td>
               <td>
                 <details class="member-edit">

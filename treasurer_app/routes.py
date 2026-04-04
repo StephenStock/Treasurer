@@ -790,6 +790,12 @@ def _members_page_context():
 
     members = []
     for row in member_rows:
+        sd = float(row["subscription_due"] or 0)
+        sp = float(row["subscription_paid"] or 0)
+        dd = float(row["dining_due"] or 0)
+        dp = float(row["dining_paid"] or 0)
+        subs_out = max(0.0, round(sd - sp, 2))
+        dining_out = max(0.0, round(dd - dp, 2))
         members.append(
             {
                 "id": row["id"],
@@ -806,8 +812,9 @@ def _members_page_context():
                 "dining_paid": row["dining_paid"],
                 "dues_status": row["dues_status"],
                 "dues_notes": row["dues_notes"],
-                "subscription_outstanding": float(row["subscription_due"] or 0) - float(row["subscription_paid"] or 0),
-                "dining_outstanding": float(row["dining_due"] or 0) - float(row["dining_paid"] or 0),
+                "subscription_outstanding": subs_out,
+                "dining_outstanding": dining_out,
+                "has_payment_shortfall": subs_out > 0 or dining_out > 0,
             }
         )
 
