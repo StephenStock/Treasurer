@@ -97,6 +97,8 @@ The repo root has **`deploy.bat`**. It runs the same server script over **SSH** 
 3. Edit **`deploy.bat`** if the server address is not **`91.99.170.73`**, or run: `deploy.bat your.ip.or.hostname`
 4. Double‑click **`deploy.bat`** or run it from **Command Prompt** in the project folder.
 
+**Note:** **`deploy.bat`** runs **`git fetch`** and resets **`scripts/*.sh`** on the server **before** **`deploy.sh`**, so a dirty **`scripts/deploy.sh`** (often from **`chmod`**) cannot block **`git pull`** anymore.
+
 Push your changes to **GitHub** before deploying, or `git pull` on the server will have nothing new to fetch.
 
 ## Rollback procedure

@@ -18,7 +18,9 @@ if not "%~1"=="" (
 )
 
 echo Deploying to steve@%DEPLOY_HOST% ...
-ssh steve@%DEPLOY_HOST% "cd /opt/treasurer && bash scripts/deploy.sh"
+REM Reset tracked shell scripts on the server before deploy.sh runs. Otherwise chmod/line-ending drift
+REM on scripts\deploy.sh blocks "git pull" inside deploy (chicken-and-egg until pull succeeds once).
+ssh steve@%DEPLOY_HOST% "cd /opt/treasurer && git fetch origin && ( git restore scripts/backup_db.sh scripts/deploy.sh scripts/healthcheck.sh scripts/restore_db.sh scripts/rollback.sh 2>/dev/null || git checkout HEAD -- scripts/backup_db.sh scripts/deploy.sh scripts/healthcheck.sh scripts/restore_db.sh scripts/rollback.sh ) && bash scripts/deploy.sh"
 set "EXITCODE=%ERRORLEVEL%"
 if not "%EXITCODE%"=="0" (
   echo.
