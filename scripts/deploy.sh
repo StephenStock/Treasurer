@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 # Deploy Treasurer from a git checkout on the server (see docs/Runbook-Hetzner.md).
+#
+# Usage (from anywhere):
+#   bash /opt/treasurer/scripts/deploy.sh
+# Or after: cd /opt/treasurer
+#   bash scripts/deploy.sh
+#
+# Optional environment:
+#   DEPLOY_SKIP_BACKUP=1   — skip the pre-deploy DB backup (not recommended)
+#   DEPLOY_NO_CACHE=1      — rebuild the app image with --no-cache (slower; use if you suspect a stale image)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,14 +19,30 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-echo "==> Backing up database (pre-deploy)"
-bash "$REPO_ROOT/scripts/backup_db.sh"
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+  echo "Deploy aborted: this folder has uncommitted changes to tracked files." >&2
+  echo "Fix or discard them first, then try again. Example: git status" >&2
+  git status -s >&2
+  exit 1
+fi
+
+if [[ "${DEPLOY_SKIP_BACKUP:-}" != "1" ]]; then
+  echo "==> Backing up database (pre-deploy)"
+  bash "$REPO_ROOT/scripts/backup_db.sh"
+else
+  echo "==> Skipping database backup (DEPLOY_SKIP_BACKUP=1)"
+fi
 
 echo "==> Pulling latest code"
 git pull --ff-only
 
 echo "==> Building and restarting stack"
-docker compose up -d --build
+if [[ "${DEPLOY_NO_CACHE:-}" == "1" ]]; then
+  docker compose build --no-cache app
+  docker compose up -d
+else
+  docker compose up -d --build
+fi
 
 echo "==> Health check"
 bash "$REPO_ROOT/scripts/healthcheck.sh"

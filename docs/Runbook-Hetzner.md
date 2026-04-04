@@ -63,12 +63,30 @@ Repository layout for deployment:
 
 ## Deploy procedure
 
+From the server (as **steve**), in the project folder:
+
 ```bash
 cd /opt/treasurer
-./scripts/deploy.sh
+bash scripts/deploy.sh
 ```
 
-This runs a **pre-deploy backup**, `git pull --ff-only`, `docker compose up -d --build`, and the health check.
+This script:
+
+1. Refuses to run if **Git** shows **uncommitted edits** to tracked files (so a half-edited file on the server cannot block `git pull` again — fix with `git status` / `git restore` first).
+2. Runs a **pre-deploy database backup** (`scripts/backup_db.sh`).
+3. Runs **`git pull --ff-only`** (only fast-forward; fails if the server’s branch has diverged).
+4. Runs **`docker compose up -d --build`** (rebuild app image and restart containers).
+5. Runs **`scripts/healthcheck.sh`**.
+
+If you ever suspect Docker is using a **stale** app image after a pull:
+
+```bash
+DEPLOY_NO_CACHE=1 bash scripts/deploy.sh
+```
+
+To skip the backup step (not recommended): `DEPLOY_SKIP_BACKUP=1 bash scripts/deploy.sh`
+
+If `bash scripts/deploy.sh` says “Permission denied”, use `bash` as above (no execute bit needed).
 
 ## Rollback procedure
 
