@@ -37,7 +37,7 @@ Status:
 - Protected admin routes
 
 Status:
-- Completed
+- Deferred — current product is **single treasurer, one laptop**, browser on `127.0.0.1` only; packaging for another user is a separate deliverable
 
 ### Phase 3: Members and dues
 

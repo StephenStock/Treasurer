@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This runbook is the single operational reference for the local Treasurer app.
+This runbook is the single operational reference for the **local** Treasurer app.
+
+For **Azure hosting**, subscriptions, and handover of cloud resources, use `docs/Runbook-Hosting.md`.
 
 ## Operating direction
 
@@ -15,13 +17,10 @@ The current preferred operating model is:
 
 ## Current system summary
 
-- Repo: `StephenStock/Treasurer`
-- Preferred repo location: `C:\Code\Treasurer`
 - App stack: Flask, server-rendered templates, light vanilla JavaScript
-- Preferred operating mode: local Windows app
-- Preferred database: local SQLite
-- Live database path: set in `config.local` with `TREASURER_DATABASE`, or default to `C:\TreasurerDB\Treasurer.db`
-- Mirrored backup folder: selected from app settings, with a one-way safety copy written out on exit
+- Operating mode: single user, local Windows laptop, browser pointed at `127.0.0.1`
+- Database: SQLite file on this machine (`Treasurer.db` next to `start.bat` unless overridden in `config.local`)
+- Mirrored backup: folder from Settings (or `TREASURER_BACKUP_DATABASE`), kept in sync after saves and on clean exit
 - Single active-copy lock: only one running copy should hold the database at a time
 - Mirrored backup folder can also be changed from the app's Settings page and is stored with the database
 - The home page shows a brief backup status line and an `Exit App` button
@@ -33,7 +32,6 @@ The current preferred operating model is:
 
 The app includes:
 
-- Authentication with seeded internal roles
 - Members and dues screens
 - Bank ledger import and category assignment
 - Balance sheet reporting
@@ -49,7 +47,8 @@ Important local files:
 
 - `start.bat`: local Windows launcher
 - `README.md`: quick-start and local setup summary
-- `docs/Runbook.md`: this operational guide
+- `docs/Runbook.md`: this operational guide (local)
+- `docs/Runbook-Hosting.md`: Azure hosting and handover (when used)
 - `docs/specs/`: feature and business-rule documents
 - `treasurer_app/schema.sql`: canonical schema
 
@@ -57,34 +56,33 @@ Important local files:
 
 ### Default behavior
 
-- `start.bat` creates or reuses a local virtual environment
+- `start.bat` creates or reuses a local `.venv`
 - The launcher installs the Python dependencies if needed
-- If the SQLite database does not yet contain the `users` table, the app initializes the schema and seed data
+- If the SQLite database does not yet contain core tables (for example `reporting_periods`), the app initializes the schema and seed data
 - The app starts at `http://127.0.0.1:5000`
+
+The venv is managed automatically by the launcher, so manual activation is not part of the normal flow.
 
 ### Local database expectations
 
-- SQLite is the normal and preferred storage engine
-- The active live database should be the shared path you set in `TREASURER_DATABASE`
-- If `TREASURER_DATABASE` is not set, `start.bat` falls back to `C:\TreasurerDB\Treasurer.db`
-- The mirrored backup should live in a safe folder, typically OneDrive
-- The live database should not be stored inside OneDrive
-- If another copy is already running, `start.bat` should stop and tell you to close the other one first
+- SQLite is the storage engine; one treasurer, one laptop, one canonical `Treasurer.db`
+- Default live path: `Treasurer.db` in the project folder (`start.bat` sets this unless `config.local` overrides)
+- Optional `config.local`: set `TREASURER_DATABASE` to another path **on this PC** if you want the live file outside the repo folder
+- Keep the mirrored backup in a safe folder (for example under OneDrive); avoid letting cloud sync fight SQLite on the **live** file
+- If another copy of the app is already running, `start.bat` should stop and tell you to close the other instance first
 
 ### Database override
 
-- Create a local `config.local` file next to `start.bat`
-- Treat `config.local` as the machine-specific hardcode for the live path
-- Set `TREASURER_DATABASE` in that file to the shared UNC path you want that machine to use
-- Set `TREASURER_BACKUP_DATABASE` if you want the mirrored backup somewhere else
-- The value can be either a folder path or a full `.db` file path; the app will use the folder and create `Treasurer.backup.db` inside it
-- The Settings page includes a backup folder field for day-to-day changes
+- Create `config.local` next to `start.bat` only if you need non-default paths
+- `TREASURER_DATABASE`: full path to the live `.db` file on this machine
+- `TREASURER_BACKUP_DATABASE`: backup file path or folder (folder receives `Treasurer.backup.db`)
+- The Settings page can adjust the backup folder for day-to-day use
 
 ## Backups and restore
 
 ### Manual backup routine
 
-- The launcher keeps a mirrored backup copy in sync automatically
+- The app keeps a mirrored backup copy in sync automatically after writes
 - Copy the SQLite database file to a safe dated backup location before major imports or schema changes
 - Treat the workbook export pack as a second continuity layer
 
@@ -186,7 +184,8 @@ Confirm:
 ## Documentation policy
 
 - Keep this runbook as the single source of truth for local runtime and recovery setup
+- Keep cloud and subscription operations in `docs/Runbook-Hosting.md`
 - Keep feature intent and business rules in `docs/specs/`
-- Avoid creating one-off operational notes when the content belongs here
+- Avoid creating one-off operational notes when the content belongs in one of the runbooks
 
 

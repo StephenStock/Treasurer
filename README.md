@@ -8,7 +8,6 @@ Local-first treasurer aid built with Flask, vanilla JavaScript, and SQLite.
 - Local Windows launch flow via `start.bat`
 - SQLite locally by default
 - Project documentation under `docs/`
-- Recommended repo location: `C:\Code\Treasurer`
 
 ## Quick start
 
@@ -20,16 +19,16 @@ start.bat
 
 This will:
 
-1. Create a local virtual environment if needed
+1. Create or reuse a local `.venv` automatically
 2. Install the Python dependencies
 3. Create the local SQLite database on first run
 4. Start the development server at `http://127.0.0.1:5000`
 
-`start.bat` reads `config.local` first. For now, treat that file as the local machine-specific hardcode for the live database path. If you put `TREASURER_DATABASE=\\DEN\TreasurerDB\Treasurer.db` in it, that machine will use the shared live database. If `config.local` is missing, it falls back to `C:\TreasurerDB\Treasurer.db`.
+You do not need to activate the environment manually; `start.bat` handles that for you.
 
-Use `config.local.example` as the template for the file.
+By default the live database is `Treasurer.db` in the same folder as `start.bat`. Optional `config.local` (see `config.local.example`) can set `TREASURER_DATABASE` or `TREASURER_BACKUP_DATABASE` if you want the files elsewhere on **this laptop** only.
 
-You can change the mirrored backup folder from the app's Settings page. The app will create the folder if it does not exist and store `Treasurer.backup.db` inside it. The backup is a one-way safety copy written out when the app exits.
+You can change the mirrored backup location from the app's Settings page. The app creates the folder if needed and keeps `Treasurer.backup.db` in sync after successful saves (and when you exit cleanly via the launcher).
 
 If another copy is already open, the launcher will stop with a message telling you to shut the other one down first.
 
@@ -51,8 +50,7 @@ The home page shows a one-line backup status and an `Exit App` button. The detai
   - Bank ledger and categorisation
   - Cash entry and settlement
   - Reporting and balances
-- Public access:
-  - public forms are optional and may remain in Microsoft Forms instead
+- Standalone use: run locally on the treasurer’s laptop; sharing with another person is expected to be a packaged handover, not ad-hoc hosting
 
 ## Product direction
 

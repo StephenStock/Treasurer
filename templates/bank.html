@@ -2,65 +2,52 @@
 
 {% block title %}Bank | Treasurer Portal{% endblock %}
 
+{% macro bank_category_select_options(selected_category_id=none) -%}
+  {% for direction, group in ledger_categories|groupby('direction') %}
+    <optgroup
+      class="bank-category-optgroup bank-category-optgroup--{{ direction }}"
+      label="{% if direction == 'in' %}Income{% else %}Expense{% endif %}"
+    >
+      {% for category in group %}
+        <option
+          value="{{ category.id }}"
+          data-category-code="{{ category.code }}"
+          {% if selected_category_id is not none and category.id == selected_category_id %}selected{% endif %}
+        >{{ category.display_name }}</option>
+      {% endfor %}
+    </optgroup>
+  {% endfor %}
+{%- endmacro %}
+
 {% block content %}
-  <section class="hero-card bank-hero">
-    <div>
-      <p class="eyebrow">Bank Ledger</p>
-      <h2>Import statement lines and assign each row to the same income and expense categories used in the workbook.</h2>
-    </div>
-    <div class="hero-note hero-actions">
-      <form method="post" action="{{ url_for('main.bank_import') }}" enctype="multipart/form-data">
-        <label class="sr-only" for="statement-files">Statement files</label>
-        <input
-          id="statement-files"
-          name="statement_files"
-          type="file"
-          multiple
-          accept=".csv,text/csv"
-        >
-        <button class="button button-primary" type="submit">Import Statement CSVs</button>
-      </form>
-      <form method="post" action="{{ url_for('main.bank_rebuild_from_workbook') }}">
-        <button class="button button-secondary" type="submit">Rebuild from Workbook</button>
-      </form>
-      <p>The import can use one or more CSV files from your computer, or fall back to the downloaded statement files if you leave the picker empty. It updates only statement columns and leaves notes or category allocations untouched.</p>
-      <p><strong>Rebuild from Workbook</strong> clears the current bank rows and repopulates them from the spreadsheet, including any split allocations stored on the Bank sheet.</p>
-      {% if bank_summary.uncategorised_transactions %}
-        <p class="attention-banner">
-          {{ bank_summary.uncategorised_transactions }} uncategorised row{{ 's' if bank_summary.uncategorised_transactions != 1 else '' }} need attention.
-        </p>
-      {% else %}
-        <p class="attention-banner attention-banner-ok">All imported rows currently have a category.</p>
-      {% endif %}
-    </div>
-  </section>
-
-  <section class="stats-grid bank-stats">
-    <article class="stat-card">
-      <span>Transactions</span>
-      <strong>{{ bank_summary.total_transactions }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Money In</span>
-      <strong>&pound;{{ "%.2f"|format(bank_summary.total_money_in) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Money Out</span>
-      <strong>&pound;{{ "%.2f"|format(bank_summary.total_money_out) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Uncategorised</span>
-      <strong>{{ bank_summary.uncategorised_transactions }}</strong>
-    </article>
-  </section>
-
   <section class="panel bank-panel">
     <div class="panel-heading">
       <div>
         <h3>Transactions</h3>
         <p class="section-note">Compact statement-style view. Category changes autosave as soon as you choose a value.</p>
+        {% if bank_summary.uncategorised_transactions %}
+          <p class="section-note attention-banner">
+            {{ bank_summary.uncategorised_transactions }} uncategorised row{{ 's' if bank_summary.uncategorised_transactions != 1 else '' }} need attention.
+          </p>
+        {% endif %}
       </div>
-      <input type="search" id="bankSearch" placeholder="Filter bank transactions">
+      <div class="bank-panel-actions">
+        <form class="bank-panel-import" method="post" action="{{ url_for('main.bank_import') }}" enctype="multipart/form-data">
+          <label class="sr-only" for="statement-files">Statement files</label>
+          <input
+            id="statement-files"
+            name="statement_files"
+            type="file"
+            multiple
+            accept=".csv,text/csv"
+          >
+          <button class="button button-primary" type="submit">Import Statement CSVs</button>
+        </form>
+        <form method="post" action="{{ url_for('main.bank_rebuild_from_workbook') }}">
+          <button class="button button-secondary" type="submit">Rebuild from Workbook</button>
+        </form>
+        <input type="search" id="bankSearch" placeholder="Filter bank transactions">
+      </div>
     </div>
 
     <div class="table-scroll">
@@ -81,7 +68,15 @@
           {% for transaction in bank_transactions %}
             <tr class="{% if transaction.is_opening_balance %}opening-balance{% endif %}{% if transaction.needs_attention %} needs-attention{% endif %}">
               <td>{{ transaction.transaction_date or "-" }}</td>
-              <td class="details-cell">{{ transaction.details }}</td>
+              <td class="details-cell">
+                {% if transaction.details %}
+                  {{ transaction.details }}
+                {% elif transaction.transaction_type %}
+                  <span class="muted-text">{{ transaction.transaction_type }}</span>
+                {% else %}
+                  <span class="muted-text">—</span>
+                {% endif %}
+              </td>
               {% set single_allocation = transaction.allocations[0] if transaction.allocations else None %}
               {% set split_rows = transaction.allocations if transaction.allocations|length > 1 else [] %}
               <td class="type-cell">
@@ -119,21 +114,14 @@
                       >
                         <option value="">Choose category</option>
                         <option value="__split__">Split</option>
-                        {% for category in ledger_categories %}
-                          <option
-                            value="{{ category.id }}"
-                            data-category-code="{{ category.code }}"
-                            {% if single_allocation and single_allocation.ledger_category_id == category.id %}selected{% endif %}
-                          >
-                            {{ category.display_name }}
-                          </option>
-                        {% endfor %}
+                        {{ bank_category_select_options(single_allocation.ledger_category_id if single_allocation else none) }}
                       </select>
                       <input
                         type="hidden"
                         name="allocation_amount"
                         data-bank-allocation-single-amount
                         value="{{ '%.2f'|format(transaction.net_amount) }}"
+                        {% if split_rows|length > 0 %}disabled{% endif %}
                       >
                     </div>
 
@@ -150,15 +138,7 @@
                                 required
                               >
                                 <option value="">Choose category</option>
-                                {% for category in ledger_categories %}
-                                  <option
-                                    value="{{ category.id }}"
-                                    data-category-code="{{ category.code }}"
-                                    {% if allocation.ledger_category_id == category.id %}selected{% endif %}
-                                  >
-                                    {{ category.display_name }}
-                                  </option>
-                                {% endfor %}
+                                {{ bank_category_select_options(allocation.ledger_category_id) }}
                               </select>
                               <label class="sr-only">Amount</label>
                               <input
@@ -175,6 +155,12 @@
                             </div>
                           {% endfor %}
                         </div>
+                        <p
+                          class="section-note bank-allocation-summary"
+                          data-bank-allocation-summary
+                          {% if split_rows|length == 0 %}hidden{% endif %}
+                          aria-live="polite"
+                        ></p>
                       </div>
                       <template data-bank-allocation-template>
                         <div class="bank-allocation-row" data-bank-allocation-row>
@@ -186,11 +172,7 @@
                             required
                           >
                             <option value="">Choose category</option>
-                            {% for category in ledger_categories %}
-                              <option value="{{ category.id }}" data-category-code="{{ category.code }}">
-                                {{ category.display_name }}
-                              </option>
-                            {% endfor %}
+                            {{ bank_category_select_options() }}
                           </select>
                           <label class="sr-only">Amount</label>
                           <input
@@ -239,7 +221,12 @@
                           <option value="">Link to meeting</option>
                           {% for meeting in meeting_summaries %}
                             {% set remaining = meeting.remaining_to_bank %}
-                            <option value="{{ meeting.meeting_key }}" {% if remaining <= 0 %}disabled{% endif %}>
+                            <option
+                              value="{{ meeting.meeting_key }}"
+                              data-meeting-name="{{ meeting.meeting_name }}"
+                              data-meeting-remaining="{{ remaining }}"
+                              {% if remaining <= 0 %}disabled{% endif %}
+                            >
                               {{ meeting.meeting_name }}{% if remaining > 0 %} (&pound;{{ "%.2f"|format(remaining) }} remaining){% else %} (Settled){% endif %}
                             </option>
                           {% endfor %}

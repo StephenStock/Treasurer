@@ -16,18 +16,24 @@
   });
 };
 
-const setInlineStatus = (statusElement, ok) => {
+const setInlineStatus = (statusElement, ok, detail = '') => {
   if (!statusElement) {
     return;
   }
 
-  statusElement.textContent = ok ? '\u2713' : '\u2715';
+  if (!ok && detail) {
+    const msg = String(detail);
+    statusElement.textContent = msg.length > 72 ? `${msg.slice(0, 69)}\u2026` : msg;
+  } else {
+    statusElement.textContent = ok ? '\u2713' : '\u2715';
+  }
   statusElement.classList.toggle('is-success', ok);
   statusElement.classList.toggle('is-error', !ok);
+  const delay = !ok && detail ? 5200 : ok ? 1200 : 1800;
   window.setTimeout(() => {
     statusElement.textContent = '';
     statusElement.classList.remove('is-success', 'is-error');
-  }, ok ? 1200 : 1800);
+  }, delay);
 };
 
 const formatMoney = (value) => {
@@ -227,19 +233,62 @@ const showBankSettlementSuccess = (form, meeting, settlement) => {
   }
 };
 
+const updateBankMeetingOptionLabels = (meeting) => {
+  if (!meeting?.meeting_key) {
+    return;
+  }
+
+  const meetingKey = String(meeting.meeting_key);
+  const meetingName = meeting.meeting_name || meetingKey;
+  const remaining = Number.parseFloat(meeting.remaining_to_bank || 0);
+  const label = remaining > 0
+    ? `${meetingName} (${formatMoney(remaining)} remaining)`
+    : `${meetingName} (Settled)`;
+  const optionSelector = `select[name="meeting_key"] option[value="${CSS.escape(meetingKey)}"]`;
+
+  document.querySelectorAll(optionSelector).forEach((option) => {
+    option.textContent = label;
+    option.dataset.meetingRemaining = String(remaining);
+    option.dataset.meetingName = meetingName;
+    option.disabled = remaining <= 0;
+  });
+};
+
+const roundBankMoney = (value) =>
+  Math.round((Number.parseFloat(String(value)) || 0) * 100) / 100;
+
+const getBankSplitAllocationTotals = (form) => {
+  const transactionTotal = roundBankMoney(form.dataset.transactionAmount || 0);
+  const allocationTotal = roundBankMoney(
+    Array.from(form.querySelectorAll('[data-bank-allocation-amount]')).reduce(
+      (sum, input) => sum + (Number.parseFloat(input.value || 0) || 0),
+      0,
+    ),
+  );
+  const matches = Math.abs(allocationTotal - transactionTotal) <= 0.01;
+  return { transactionTotal, allocationTotal, matches };
+};
+
 const updateBankAllocationSummary = (form) => {
   const summary = form.querySelector('[data-bank-allocation-summary]');
   if (!summary) {
     return;
   }
 
-  const transactionTotal = Number.parseFloat(form.dataset.transactionAmount || 0);
-  const allocationTotal = Array.from(form.querySelectorAll('[data-bank-allocation-amount]')).reduce(
-    (sum, input) => sum + (Number.parseFloat(input.value || 0) || 0),
-    0,
-  );
+  const splitMode = form.dataset.bankSplitMode === 'true';
+  if (!splitMode) {
+    summary.hidden = true;
+    summary.textContent = '';
+    summary.classList.remove('bank-allocation-summary--mismatch');
+    return;
+  }
 
-  summary.textContent = `Split total ${formatMoney(allocationTotal)} of ${formatMoney(transactionTotal)}`;
+  summary.hidden = false;
+  const { transactionTotal, allocationTotal, matches } = getBankSplitAllocationTotals(form);
+  summary.textContent = matches
+    ? `Split total ${formatMoney(allocationTotal)} of ${formatMoney(transactionTotal)}`
+    : `Split total ${formatMoney(allocationTotal)} of ${formatMoney(transactionTotal)} — must equal ${formatMoney(transactionTotal)}`;
+  summary.classList.toggle('bank-allocation-summary--mismatch', !matches);
 };
 
 const scheduleBankSplitAutosave = (form, status, row, rowStatus) => {
@@ -260,8 +309,8 @@ const scheduleBankSplitAutosave = (form, status, row, rowStatus) => {
         }
         updateBankMeetingControls(form);
       })
-      .catch(() => {
-        setInlineStatus(status, false);
+      .catch((err) => {
+        setInlineStatus(status, false, err?.message || '');
       });
   }, 250);
 };
@@ -270,7 +319,6 @@ const setBankAllocationMode = (form, mode, seedCategoryId = '') => {
   const single = form.querySelector('[data-bank-allocation-single]');
   const split = form.querySelector('[data-bank-allocation-split]');
   const singlePicker = form.querySelector('[data-bank-allocation-single-picker]');
-  const singleAmount = form.querySelector('[data-bank-allocation-single-amount]');
   const splitInputs = form.querySelectorAll(
     '[data-bank-allocation-split] [data-bank-allocation-category], [data-bank-allocation-split] [data-bank-allocation-amount]',
   );
@@ -304,8 +352,12 @@ const setBankAllocationMode = (form, mode, seedCategoryId = '') => {
       }
     }
   }
-  if (singleAmount) {
-    singleAmount.value = form.dataset.transactionAmount || '0';
+  const singleHiddenAmount = form.querySelector('[data-bank-allocation-single-amount]');
+  if (singleHiddenAmount) {
+    singleHiddenAmount.disabled = mode === 'split';
+    if (mode !== 'split') {
+      singleHiddenAmount.value = form.dataset.transactionAmount || '0';
+    }
   }
 
   splitInputs.forEach((field) => {
@@ -398,8 +450,8 @@ const wireBankAllocationRow = (form, row) => {
 
 const wireBankAllocationForm = (form) => {
   const singlePicker = form.querySelector('[data-bank-allocation-single-picker]');
-  const status = form.querySelector('[data-bank-allocation-status]');
   const row = form.closest('tr');
+  const status = row?.querySelector('[data-bank-allocation-status]');
   const splitAdd = row?.querySelector('[data-bank-split-add]');
   const splitCancel = row?.querySelector('[data-bank-split-cancel]');
   const splitSave = row?.querySelector('[data-bank-split-save]');
@@ -484,6 +536,19 @@ const wireBankAllocationForm = (form) => {
       return;
     }
     event.preventDefault();
+    if (!form.reportValidity()) {
+      return;
+    }
+    const { transactionTotal, matches } = getBankSplitAllocationTotals(form);
+    if (!matches) {
+      setInlineStatus(
+        status,
+        false,
+        `Allocations must total ${formatMoney(transactionTotal)} for this transaction.`,
+      );
+      updateBankAllocationSummary(form);
+      return;
+    }
     if (status) {
       status.textContent = '…';
       status.classList.remove('is-success', 'is-error');
@@ -500,8 +565,8 @@ const wireBankAllocationForm = (form) => {
         }
         updateBankMeetingControls(form);
       })
-      .catch(() => {
-        setInlineStatus(status, false);
+      .catch((err) => {
+        setInlineStatus(status, false, err?.message || '');
       });
   });
 
@@ -657,6 +722,9 @@ if (bankSettlementForms.length > 0) {
 
       sendJsonForm(form)
         .then((payload) => {
+          if (payload.meeting) {
+            updateBankMeetingOptionLabels(payload.meeting);
+          }
           showBankSettlementSuccess(form, payload.meeting, payload.settlement);
           setInlineStatus(status, true);
         })

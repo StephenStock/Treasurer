@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 
 instance/
+backups/
 *.db
 *.sqlite
 *.sqlite3

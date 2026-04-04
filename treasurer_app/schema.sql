@@ -190,6 +190,7 @@ CREATE TABLE bank_transactions (
     source_sheet TEXT,
     source_row_number INTEGER,
     notes TEXT,
+    import_fingerprint TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
     FOREIGN KEY (reporting_period_id) REFERENCES reporting_periods (id),
     UNIQUE (source_workbook, source_sheet, source_row_number)
@@ -319,6 +320,7 @@ CREATE INDEX idx_dining_charges_member_id ON dining_charges (member_id);
 CREATE INDEX idx_payments_member_id ON payments (member_id);
 CREATE INDEX idx_bank_transactions_date ON bank_transactions (transaction_date);
 CREATE INDEX idx_bank_transactions_reporting_period_id ON bank_transactions (reporting_period_id);
+CREATE UNIQUE INDEX ux_bank_transactions_import_fingerprint ON bank_transactions (import_fingerprint);
 CREATE INDEX idx_bank_transaction_allocations_transaction_id ON bank_transaction_allocations (bank_transaction_id);
 CREATE INDEX idx_bank_transaction_allocations_category_id ON bank_transaction_allocations (ledger_category_id);
 CREATE INDEX idx_cashbook_entries_meeting_key ON cashbook_entries (meeting_key);

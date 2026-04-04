@@ -4,45 +4,18 @@
 
 {% block extra_head %}
   <style>
+    /* Portrait pack; compact margins (overrides global print @page after site.css). */
     @media print {
       @page {
         size: A4 portrait;
-        margin: 4mm;
-      }
-
-      body.auditors .auditors-history-table {
-        font-size: 6pt;
-      }
-
-      body.auditors .auditors-history-table td:nth-child(1),
-      body.auditors .auditors-history-table th:nth-child(1) {
-        width: 11%;
-      }
-
-      body.auditors .auditors-history-table td:nth-child(2),
-      body.auditors .auditors-history-table th:nth-child(2) {
-        width: 54%;
-      }
-
-      body.auditors .auditors-history-table td:nth-child(3),
-      body.auditors .auditors-history-table th:nth-child(3) {
-        width: 11%;
-      }
-
-      body.auditors .auditors-history-table td:nth-child(4),
-      body.auditors .auditors-history-table th:nth-child(4) {
-        width: 12%;
-      }
-
-      body.auditors .auditors-history-table td:nth-child(5),
-      body.auditors .auditors-history-table th:nth-child(5) {
-        width: 12%;
+        margin: 6mm;
       }
     }
   </style>
 {% endblock %}
 
 {% block content %}
+  <div class="auditors-header-print-band">
   <section class="statement-header-card">
     <div class="statement-header-copy">
       <p class="statement-header-crest">{{ statement_lodge_name }}</p>
@@ -57,46 +30,37 @@
 
   <section class="stats-grid auditors-stats">
     <article class="stat-card">
-      <span>Total Income</span>
+      <span>Lodge income (excl. L.O.I.)</span>
       <strong>&pound;{{ "%.2f"|format(income_total) }}</strong>
     </article>
     <article class="stat-card">
-      <span>Total Expense</span>
+      <span>Lodge expenditure (excl. L.O.I.)</span>
       <strong>&pound;{{ "%.2f"|format(expense_total) }}</strong>
     </article>
     <article class="stat-card">
-      <span>Surplus / Deficit</span>
+      <span>Lodge surplus / deficit</span>
       <strong>&pound;{{ "%.2f"|format(net_result) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>L.O.I. net (separate fund)</span>
+      <strong>&pound;{{ "%.2f"|format(loi_net_result) }}</strong>
     </article>
     <article class="stat-card">
       <span>Closing Bank Balance</span>
       <strong>{% if latest_bank_balance is not none %}&pound;{{ "%.2f"|format(latest_bank_balance) }}{% else %}-{% endif %}</strong>
     </article>
   </section>
-
-  <section class="panel auditors-panel">
-    <div class="panel-heading">
-      <div>
-        <h3>What You Are Checking</h3>
-        <p class="section-note">Lodge audit committees are expected to review the books, receipts, and reconciliations and compare beginning balances plus income minus expenses against the Treasurer’s ending balances, following standard lodge audit practice.</p>
-      </div>
-    </div>
-
-    <div class="auditors-checklist-grid">
-      {% for item in audit_checks %}
-        <article class="auditors-check-item">
-          <div class="auditors-check-box"></div>
-          <p>{{ item }}</p>
-        </article>
-      {% endfor %}
-    </div>
-  </section>
+  </div>
 
   <section class="panel auditors-panel">
     <div class="panel-heading">
       <div>
         <h3>Statement Summary</h3>
-        <p class="section-note">A simple summary of the four statement sections, useful for anyone who only wants to check the totals.</p>
+        <p class="section-note">
+          All four sections are listed for transparency. The footer is the <strong>lodge total excluding L.O.I.</strong> (General, Charity, Benevolent)—the same as the first three headline figures on this page and on the Statement.
+          Lodge of Instruction is a separate fund (not part of Grand Lodge returns). Adding the Net column for only the first three rows matches the footer; including the L.O.I. row in a manual sum will not match the lodge surplus line.
+          Rounding can still leave the sum of three rounded nets a penny or two from the footer.
+        </p>
       </div>
     </div>
 
@@ -111,9 +75,9 @@
         <thead>
           <tr>
             <th>Section</th>
-            <th>Income</th>
-            <th>Expense</th>
-            <th>Net</th>
+            <th class="money-cell">Income</th>
+            <th class="money-cell">Expense</th>
+            <th class="money-cell">Net</th>
           </tr>
         </thead>
         <tbody>
@@ -126,7 +90,7 @@
             </tr>
           {% endfor %}
           <tr class="totals-row">
-            <td>Total</td>
+            <td>Lodge total (excl. L.O.I.)</td>
             <td class="money-cell">&pound;{{ "%.2f"|format(income_total) }}</td>
             <td class="money-cell">&pound;{{ "%.2f"|format(expense_total) }}</td>
             <td class="money-cell">&pound;{{ "%.2f"|format(net_result) }}</td>
@@ -249,6 +213,8 @@
           <col class="auditors-expense-col">
           <col class="auditors-income-col">
           <col class="auditors-expense-col">
+          <col class="auditors-subs-outstanding-col">
+          <col class="auditors-dining-outstanding-col">
         </colgroup>
         <thead>
           <tr>
@@ -260,29 +226,52 @@
             <th class="money-cell">Subs Paid</th>
             <th class="money-cell">Dining Due</th>
             <th class="money-cell">Dining Paid</th>
+            <th class="money-cell">Subs O/S</th>
+            <th class="money-cell">Dining O/S</th>
           </tr>
         </thead>
         <tbody>
           {% for member in member_statuses %}
-            <tr>
+            <tr class="{% if member.has_payment_shortfall %}auditors-members-row-shortfall{% endif %}">
               <td>{{ member.membership_number }}</td>
               <td>{{ member.full_name }}</td>
               <td>{{ member.member_type }}</td>
               <td>{{ member.status }}</td>
-              <td class="money-cell">{% if member.subscription_due %}&pound;{{ "%.2f"|format(member.subscription_due) }}{% endif %}</td>
-              <td class="money-cell">{% if member.subscription_paid %}&pound;{{ "%.2f"|format(member.subscription_paid) }}{% endif %}</td>
-              <td class="money-cell">{% if member.dining_due %}&pound;{{ "%.2f"|format(member.dining_due) }}{% endif %}</td>
-              <td class="money-cell">{% if member.dining_paid %}&pound;{{ "%.2f"|format(member.dining_paid) }}{% endif %}</td>
+              <td class="money-cell{% if member.subscription_outstanding > 0 %} auditors-money-behind{% endif %}">{% if member.subscription_due %}&pound;{{ "%.2f"|format(member.subscription_due) }}{% endif %}</td>
+              <td class="money-cell{% if member.subscription_outstanding > 0 %} auditors-money-behind{% endif %}">{% if member.subscription_paid %}&pound;{{ "%.2f"|format(member.subscription_paid) }}{% endif %}</td>
+              <td class="money-cell{% if member.dining_outstanding > 0 %} auditors-money-behind{% endif %}">{% if member.dining_due %}&pound;{{ "%.2f"|format(member.dining_due) }}{% endif %}</td>
+              <td class="money-cell{% if member.dining_outstanding > 0 %} auditors-money-behind{% endif %}">{% if member.dining_paid %}&pound;{{ "%.2f"|format(member.dining_paid) }}{% endif %}</td>
+              <td class="money-cell{% if member.subscription_outstanding > 0 %} auditors-money-behind{% endif %}">&pound;{{ "%.2f"|format(member.subscription_outstanding) }}</td>
+              <td class="money-cell{% if member.dining_outstanding > 0 %} auditors-money-behind{% endif %}">&pound;{{ "%.2f"|format(member.dining_outstanding) }}</td>
             </tr>
           {% endfor %}
           {% if member_statuses|length == 0 %}
             <tr>
-              <td colspan="8">No member data found for this period.</td>
+              <td colspan="10">No member data found for this period.</td>
             </tr>
           {% endif %}
         </tbody>
       </table>
     </div>
+    {% if member_statuses|length > 0 %}
+      {% set ar = member_arrears_summary %}
+      <div class="auditors-members-arrears-summary" aria-label="Unpaid subscription and dining totals">
+        {% if ar.members_with_shortfall > 0 %}
+          <p class="section-note">
+            <strong>Unpaid this period</strong> (due minus paid, minimum zero):
+            <strong>{{ ar.members_with_shortfall }}</strong> member{% if ar.members_with_shortfall != 1 %}s{% endif %} with a shortfall —
+            subscriptions <strong>&pound;{{ "%.2f"|format(ar.total_subscription_outstanding) }}</strong>,
+            dining <strong>&pound;{{ "%.2f"|format(ar.total_dining_outstanding) }}</strong>,
+            <strong>combined &pound;{{ "%.2f"|format(ar.combined_outstanding) }}</strong>.
+            Rows and amounts with money still owed are highlighted <strong>in red</strong>; <strong>Subs O/S</strong> and <strong>Dining O/S</strong> are due minus paid (minimum &pound;0.00).
+          </p>
+        {% else %}
+          <p class="section-note">
+            <strong>Unpaid this period:</strong> no shortfall — <strong>Subs O/S</strong> and <strong>Dining O/S</strong> are &pound;0.00 for every member (or nothing was due).
+          </p>
+        {% endif %}
+      </div>
+    {% endif %}
   </section>
 
   <section class="panel auditors-panel">
@@ -348,7 +337,7 @@
                   {% endfor %}
                 {% else %}
                   <tr>
-                    <td colspan="4">No activity recorded for this account.</td>
+                    <td colspan="6">No activity recorded for this account.</td>
                   </tr>
                 {% endif %}
               </tbody>

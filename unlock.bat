@@ -3,7 +3,7 @@ cd /d "%~dp0"
 
 if "%LOCALAPPDATA%"=="" set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
 set "APP_DATA=%LOCALAPPDATA%\Treasurer"
-set "LOCAL_DB_DIR=C:\TreasurerDB"
+set "LOCAL_DB_DIR=%~dp0"
 if exist "%~dp0config.local" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0config.local") do (
         if /i "%%A"=="TREASURER_DATABASE" if not defined TREASURER_DATABASE set "TREASURER_DATABASE=%%B"

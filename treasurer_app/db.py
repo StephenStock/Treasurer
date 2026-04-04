@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import difflib
+import hashlib
 import io
 import os
 import re
@@ -47,6 +48,13 @@ MIGRATION_TABLE_ORDER = (
 
 APP_SETTING_BACKUP_DATABASE = "backup_database"
 APP_SETTING_BACKUP_FOLDER = "backup_folder"
+APP_SETTING_LODGE_DISPLAY_NAME = "lodge_display_name"
+
+# Shown on Statement and Auditors until overridden in Settings.
+DEFAULT_LODGE_DISPLAY_NAME = "Stanford-le-Hope Lodge No. 5217"
+
+# Bank CSV uploads: per-file read cap (UTF-8 text). Whole request also capped in Flask config.
+MAX_BANK_STATEMENT_FILE_BYTES = 8 * 1024 * 1024
 APP_RUNTIME_LOCK_NAME = "main"
 APP_RUNTIME_LOCK_HEARTBEAT_SECONDS = 30
 APP_RUNTIME_LOCK_STALE_SECONDS = 120
@@ -176,11 +184,15 @@ def ensure_instance_path(app) -> None:
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
 
+def project_root_path() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
 def default_database_path() -> Path:
     configured = os.environ.get("TREASURER_DATABASE")
     if configured:
         return Path(configured)
-    return Path("C:/TreasurerDB/Treasurer.db")
+    return project_root_path() / "Treasurer.db"
 
 
 def default_backup_folder_path() -> Path:
@@ -209,6 +221,23 @@ def backup_database_file_path(backup_folder_path: Path) -> Path:
 
 def default_backup_database_path() -> Path:
     return backup_database_file_path(default_backup_folder_path())
+
+
+def resolve_mirror_backup_file_path(backup_file: Path, primary_database_path: Path | None) -> Path:
+    """Absolute path to the mirrored backup file; relative paths are anchored to the primary DB directory."""
+    expanded = backup_file.expanduser()
+    if expanded.is_absolute():
+        return expanded.resolve()
+    ps = None if primary_database_path is None else str(primary_database_path)
+    if ps in (None, "", ":memory:") or ps.startswith("file::memory:"):
+        return expanded.resolve()
+    primary_resolved = primary_database_path.expanduser().resolve()
+    return (primary_resolved.parent / expanded).resolve()
+
+
+def ensure_backup_parent_dir(resolved_backup_file: Path) -> None:
+    """Create the backup folder if needed; raises OSError if it cannot be created (permissions, invalid path)."""
+    resolved_backup_file.parent.mkdir(parents=True, exist_ok=True)
 
 
 def runtime_lock_identity() -> dict[str, object]:
@@ -475,41 +504,30 @@ def resolve_backup_database_path(primary_database_path: Path | None = None) -> P
     backup_folder = _read_backup_setting(primary_database_path)
     if backup_folder is not None:
         if backup_folder.suffix.lower() == ".db":
-            return backup_folder
-        return backup_database_file_path(backup_folder)
-
-    configured = os.environ.get("TREASURER_BACKUP_DATABASE")
-    if configured:
-        configured_path = Path(configured)
+            path = backup_folder
+        else:
+            path = backup_database_file_path(backup_folder)
+    elif os.environ.get("TREASURER_BACKUP_DATABASE"):
+        configured_path = Path(os.environ["TREASURER_BACKUP_DATABASE"])
         if configured_path.suffix.lower() == ".db":
-            return configured_path
-        return backup_database_file_path(configured_path)
+            path = configured_path
+        else:
+            path = backup_database_file_path(configured_path)
+    else:
+        path = default_backup_database_path()
 
-    return default_backup_database_path()
+    return resolve_mirror_backup_file_path(path, primary_database_path)
 
 
 def resolve_backup_folder_path(primary_database_path: Path | None = None) -> Path:
-    backup_path = _read_backup_setting(primary_database_path)
-    if backup_path is not None:
-        if backup_path.suffix.lower() == ".db":
-            return backup_path.parent
-        return backup_path
-
-    configured = os.environ.get("TREASURER_BACKUP_DATABASE")
-    if configured:
-        configured_path = Path(configured)
-        if configured_path.suffix.lower() == ".db":
-            return configured_path.parent
-        return configured_path
-
-    return default_backup_folder_path()
+    return resolve_backup_database_path(primary_database_path).parent
 
 
 def ensure_database_parent_path(database_path: Path) -> None:
     try:
         database_path.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
-        # Shared UNC paths can already exist or be managed outside this machine.
+        # Parent may already exist or be read-only; caller handles missing DB path elsewhere.
         pass
 
 
@@ -551,24 +569,37 @@ def sync_database_files(primary_path: Path, backup_path: Path) -> None:
         _atomic_copy_file(primary_path, backup_path)
 
 
-def backup_database(db: DatabaseHandle, backup_path: Path) -> None:
+def backup_database(db: DatabaseHandle, backup_path: Path, *, primary_path: Path | None = None) -> None:
     if db.backend != "sqlite":
         return
 
-    ensure_database_parent_path(backup_path)
-    temp_path = backup_path.with_name(f"{backup_path.name}.tmp")
+    resolved_backup = resolve_mirror_backup_file_path(backup_path, primary_path)
+    resolved_primary: Path | None = None
+    if primary_path is not None:
+        ps = str(primary_path)
+        if ps not in ("", ":memory:") and not ps.startswith("file::memory:"):
+            resolved_primary = primary_path.expanduser().resolve()
+
+    if resolved_primary is not None and resolved_primary == resolved_backup:
+        raise ValueError(
+            "The backup file path is the same as the live database. Choose a different backup folder in Settings "
+            "or change TREASURER_BACKUP_DATABASE."
+        )
+
+    ensure_backup_parent_dir(resolved_backup)
+    temp_path = resolved_backup.with_name(f"{resolved_backup.name}.tmp")
     if temp_path.exists():
         temp_path.unlink()
 
     db.commit()
-    destination = sqlite3.connect(temp_path)
+    destination = sqlite3.connect(str(temp_path))
     try:
         db.backup(destination)
         destination.commit()
     finally:
         destination.close()
 
-    os.replace(temp_path, backup_path)
+    os.replace(temp_path, resolved_backup)
 
 
 def restore_database_from_backup(primary_path: Path, backup_path: Path) -> None:
@@ -715,6 +746,94 @@ def _normalize_statement_text(raw_value: str | None) -> str:
     return re.sub(r"\s+", " ", str(raw_value)).strip().upper()
 
 
+_LEGACY_IMPORT_PLACEHOLDER_DETAILS = frozenset(
+    {
+        "",
+        "IMPORTED TRANSACTION",
+        "IMPORTED STATEMENT ROW",
+    }
+)
+
+
+def _bank_import_details_equivalent(a: str | None, b: str | None) -> bool:
+    """True if bank description fields should be treated as the same for import/backfill.
+
+    Empty spreadsheet/CSV cells are stored as \"\" (not phoney labels). Rows imported under
+    older code used different placeholder strings for the same empty cell, which prevented
+    deduping; those literals are still treated as equivalent to each other and to \"\".
+    """
+    na = _normalize_statement_text(a)
+    nb = _normalize_statement_text(b)
+    if na == nb:
+        return True
+    if na in _LEGACY_IMPORT_PLACEHOLDER_DETAILS and nb in _LEGACY_IMPORT_PLACEHOLDER_DETAILS:
+        return True
+    return False
+
+
+def _canonical_bank_details_for_fingerprint(details: str | None) -> str:
+    raw = (details or "").strip()
+    if _bank_import_details_equivalent(raw, ""):
+        return ""
+    return raw
+
+
+def _system_import_identity_extra(
+    source_workbook: str | None,
+    source_sheet: str | None,
+    source_row_number: int | None,
+) -> str | None:
+    """Stable sub-key for rows not from bank exports (payments, cash settlements).
+
+    Bank CSV / workbook imports use source_workbook other than \"system\" and omit this,
+    so the same logical statement line always maps to one fingerprint even across files.
+    """
+    if (source_workbook or "") == "system" and source_sheet and source_row_number is not None:
+        return f"system|{source_sheet}|{int(source_row_number)}"
+    return None
+
+
+def _bank_transaction_import_fingerprint(
+    reporting_period_id: int,
+    transaction_date: str | None,
+    details: str,
+    transaction_type: str | None,
+    money_in: float,
+    money_out: float,
+    *,
+    is_opening_balance: int = 0,
+    import_identity_extra: str | None = None,
+) -> str:
+    """Deterministic id for upserts.
+
+    Bank exports: identity is period + date + canonical details + type + in/out (no balance,
+    no file name / row index). Re-importing the same line any number of times or from a
+    partial CSV slice updates the same row; it cannot create a second row for that line.
+
+    For a full-account export the ledger is a union of prior imports; this app never deletes
+    bank rows that are missing from a smaller CSV (that would be replace-mode).
+
+    System-generated rows include import_identity_extra so they never collide with bank lines.
+    """
+    if is_opening_balance:
+        token = f"ob|{reporting_period_id}|1"
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    canon_details = _normalize_statement_text(_canonical_bank_details_for_fingerprint(details))
+    canon_type = _normalize_statement_text(transaction_type)
+    parts = [
+        str(reporting_period_id),
+        transaction_date or "",
+        canon_details,
+        canon_type,
+        f"{round(float(money_in), 2):.2f}",
+        f"{round(float(money_out), 2):.2f}",
+    ]
+    if import_identity_extra:
+        parts.append(import_identity_extra)
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
 def _tokenize_match_text(raw_value: str | None) -> set[str]:
     normalized = _normalize_statement_text(raw_value)
     return {token for token in re.split(r"[^A-Z0-9]+", normalized) if token}
@@ -748,36 +867,56 @@ def _bank_transaction_match_query(
     money_out: float,
     running_balance: float | None,
 ) -> sqlite3.Row | None:
-    if running_balance is None:
-        balance_clause = "bt.running_balance IS NULL"
-        balance_params: tuple[object, ...] = ()
-    else:
-        balance_clause = "ROUND(CAST(bt.running_balance AS numeric), 2) = ?"
-        balance_params = (round(float(running_balance), 2),)
+    """Find an existing bank row for CSV/workbook upsert when (file, sheet, row) changed.
 
-    query = f"""
+    Compares details and transaction_type using the same whitespace rules as bank exports
+    (_normalize_statement_text). The previous SQL used only UPPER(TRIM(...)), so strings
+    that differed only by internal spacing never matched and re-imports created duplicates.
+
+    If running_balance does not match (export omitted balance, rounding drift), we still
+    match the same transaction on date + amounts + description + type.
+    """
+    norm_type = _normalize_statement_text(transaction_type)
+
+    candidates = db.execute(
+        """
         SELECT *
         FROM bank_transactions bt
         WHERE COALESCE(bt.transaction_date, '') = ?
-          AND UPPER(TRIM(bt.details)) = ?
-          AND COALESCE(UPPER(TRIM(bt.transaction_type)), '') = ?
           AND ROUND(CAST(bt.money_in AS numeric), 2) = ?
           AND ROUND(CAST(bt.money_out AS numeric), 2) = ?
-          AND {balance_clause}
         ORDER BY bt.id ASC
-        LIMIT 1
-    """
-    return db.execute(
-        query,
+        """,
         (
             transaction_date or "",
-            _normalize_statement_text(details),
-            _normalize_statement_text(transaction_type),
             round(money_in, 2),
             round(money_out, 2),
-            *balance_params,
         ),
-    ).fetchone()
+    ).fetchall()
+
+    def details_match(row: sqlite3.Row) -> bool:
+        return _bank_import_details_equivalent(row["details"], details)
+
+    def type_match(row: sqlite3.Row) -> bool:
+        return _normalize_statement_text(row["transaction_type"]) == norm_type
+
+    def balance_match(row: sqlite3.Row) -> bool:
+        rb = row["running_balance"]
+        if running_balance is None:
+            return rb is None
+        if rb is None:
+            return False
+        return round(float(rb), 2) == round(float(running_balance), 2)
+
+    for row in candidates:
+        if details_match(row) and type_match(row) and balance_match(row):
+            return row
+
+    for row in candidates:
+        if details_match(row) and type_match(row):
+            return row
+
+    return None
 
 
 def _score_bank_transaction_match(
@@ -792,7 +931,9 @@ def _score_bank_transaction_match(
     target_type = _normalize_statement_text(transaction_type)
     candidate_type = _normalize_statement_text(candidate["transaction_type"])
 
-    if target_details and candidate_details:
+    if _bank_import_details_equivalent(details, candidate["details"]):
+        score += 100.0
+    elif target_details and candidate_details:
         if target_details == candidate_details:
             score += 100.0
         else:
@@ -847,17 +988,41 @@ def _upsert_bank_transaction(
     running_balance: float | None,
     is_opening_balance: int = 0,
 ) -> str:
+    details = (details or "").strip()
+    import_extra = _system_import_identity_extra(source_workbook, source_sheet, source_row_number)
+    import_fingerprint = _bank_transaction_import_fingerprint(
+        reporting_period_id,
+        transaction_date,
+        details,
+        transaction_type,
+        money_in,
+        money_out,
+        is_opening_balance=is_opening_balance,
+        import_identity_extra=import_extra,
+    )
+
     existing = db.execute(
         """
         SELECT id
         FROM bank_transactions
-        WHERE source_workbook = ?
-          AND source_sheet = ?
-          AND source_row_number = ?
+        WHERE import_fingerprint = ?
         LIMIT 1
         """,
-        (source_workbook, source_sheet, source_row_number),
+        (import_fingerprint,),
     ).fetchone()
+
+    if existing is None:
+        existing = db.execute(
+            """
+            SELECT id
+            FROM bank_transactions
+            WHERE source_workbook = ?
+              AND source_sheet = ?
+              AND source_row_number = ?
+            LIMIT 1
+            """,
+            (source_workbook, source_sheet, source_row_number),
+        ).fetchone()
 
     if existing is None:
         existing = _bank_transaction_match_query(
@@ -884,9 +1049,10 @@ def _upsert_bank_transaction(
                 is_opening_balance,
                 source_workbook,
                 source_sheet,
-                source_row_number
+                source_row_number,
+                import_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 reporting_period_id,
@@ -900,6 +1066,7 @@ def _upsert_bank_transaction(
                 source_workbook,
                 source_sheet,
                 source_row_number,
+                import_fingerprint,
             ),
         )
         return "inserted"
@@ -918,7 +1085,8 @@ def _upsert_bank_transaction(
             is_opening_balance = ?,
             source_workbook = ?,
             source_sheet = ?,
-            source_row_number = ?
+            source_row_number = ?,
+            import_fingerprint = ?
         WHERE id = ?
         """,
         (
@@ -933,10 +1101,54 @@ def _upsert_bank_transaction(
             source_workbook,
             source_sheet,
             source_row_number,
+            import_fingerprint,
             existing["id"],
         ),
     )
     return "updated"
+
+
+def recompute_bank_running_balances(db: sqlite3.Connection, reporting_period_id: int) -> None:
+    """
+    Set running_balance on each bank row so it matches a cumulative total in display order.
+
+    Bank CSV exports list rows newest-first (top line = most recent). The workbook Bank sheet
+    is oldest-first. We sort CSV rows by -source_row_number within each date so chronological
+    order (oldest at top) matches clearing order for the running total.
+    """
+    rows = db.execute(
+        """
+        SELECT id, money_in, money_out, is_opening_balance, running_balance
+        FROM bank_transactions
+        WHERE reporting_period_id = ?
+        ORDER BY
+            CASE WHEN transaction_date IS NULL OR transaction_date = '' THEN 1 ELSE 0 END,
+            transaction_date ASC,
+            COALESCE(source_workbook, '') ASC,
+            CASE WHEN is_opening_balance = 1 THEN 0 ELSE 1 END,
+            CASE
+                WHEN source_sheet = 'CSV' THEN -COALESCE(source_row_number, id)
+                ELSE COALESCE(source_row_number, id)
+            END ASC,
+            id ASC
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+    carry: float | None = None
+    for row in rows:
+        mid = float(row["money_in"] or 0)
+        mod = float(row["money_out"] or 0)
+        if row["is_opening_balance"]:
+            rb = row["running_balance"]
+            carry = float(rb) if rb is not None else mid - mod
+        else:
+            if carry is None:
+                carry = 0.0
+            carry = carry + mid - mod
+        db.execute(
+            "UPDATE bank_transactions SET running_balance = ? WHERE id = ?",
+            (round(carry, 2), row["id"]),
+        )
 
 
 def _import_bank_statement_csv(
@@ -986,7 +1198,7 @@ def _import_bank_statement_csv_handle(
             source_sheet="CSV",
             source_row_number=row_number,
             transaction_date=transaction_date,
-            details=details or "Imported statement row",
+            details=details,
             transaction_type=transaction_type,
             money_in=money_in,
             money_out=money_out,
@@ -998,6 +1210,7 @@ def _import_bank_statement_csv_handle(
         else:
             updated += 1
 
+    recompute_bank_running_balances(db, reporting_period_id)
     return {"inserted": inserted, "updated": updated}
 
 
@@ -1005,24 +1218,44 @@ def import_bank_statement_uploads(
     db: sqlite3.Connection,
     reporting_period_id: int,
     uploaded_files,
-) -> dict[str, int]:
-    totals = {"files": 0, "inserted": 0, "updated": 0}
+) -> dict[str, int | list[str]]:
+    totals: dict = {"files": 0, "inserted": 0, "updated": 0, "errors": []}
+    errors: list[str] = totals["errors"]
 
     for uploaded_file in uploaded_files:
         if uploaded_file is None or not getattr(uploaded_file, "filename", ""):
             continue
 
-        raw_bytes = uploaded_file.read()
+        fname = uploaded_file.filename or "upload.csv"
+        raw_bytes = uploaded_file.read(MAX_BANK_STATEMENT_FILE_BYTES + 1)
+        if len(raw_bytes) > MAX_BANK_STATEMENT_FILE_BYTES:
+            errors.append(
+                f"{fname}: file is larger than {MAX_BANK_STATEMENT_FILE_BYTES // (1024 * 1024)} MB; split or shorten the CSV."
+            )
+            continue
         if not raw_bytes:
+            errors.append(f"{fname}: empty file.")
             continue
 
-        with io.StringIO(raw_bytes.decode("utf-8-sig")) as handle:
-            file_totals = _import_bank_statement_csv_handle(
-                db,
-                reporting_period_id,
-                handle,
-                uploaded_file.filename,
+        try:
+            text = raw_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            errors.append(
+                f"{fname}: not valid UTF-8 text. In Excel use Save As → CSV UTF-8, or export from your bank as UTF-8."
             )
+            continue
+
+        try:
+            with io.StringIO(text) as handle:
+                file_totals = _import_bank_statement_csv_handle(
+                    db,
+                    reporting_period_id,
+                    handle,
+                    fname,
+                )
+        except Exception as exc:
+            errors.append(f"{fname}: could not import ({exc}). Check column layout matches your bank export.")
+            continue
 
         totals["files"] += 1
         totals["inserted"] += file_totals["inserted"]
@@ -1352,6 +1585,42 @@ def consolidate_virtual_accounts(db: sqlite3.Connection) -> None:
         seed_virtual_account_category_map(db)
 
 
+def remove_legacy_visitor_member(db: sqlite3.Connection) -> int:
+    visitor_rows = db.execute(
+        """
+        SELECT id
+        FROM members
+        WHERE full_name = ?
+        """,
+        ("*Visitor",),
+    ).fetchall()
+    if not visitor_rows:
+        return 0
+
+    visitor_ids = [row["id"] for row in visitor_rows]
+    placeholders = ",".join(["?"] * len(visitor_ids))
+
+    for table_name in (
+        "dues",
+        "bookings",
+        "subscription_charges",
+        "dining_charges",
+        "payments",
+        "cashbook_entries",
+        "member_prepayments",
+    ):
+        db.execute(
+            f"DELETE FROM {table_name} WHERE member_id IN ({placeholders})",
+            visitor_ids,
+        )
+
+    db.execute(
+        f"DELETE FROM members WHERE id IN ({placeholders})",
+        visitor_ids,
+    )
+    return len(visitor_ids)
+
+
 def seed_virtual_account_category_map(db: sqlite3.Connection) -> None:
     account_ids = {
         row["code"]: row["id"]
@@ -1472,6 +1741,7 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
             source_sheet TEXT,
             source_row_number INTEGER,
             notes TEXT,
+            import_fingerprint TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
             FOREIGN KEY (reporting_period_id) REFERENCES reporting_periods (id),
             UNIQUE (source_workbook, source_sheet, source_row_number)
@@ -1610,6 +1880,78 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
         schema_sql
     )
     _ensure_cash_settlement_migration(db)
+    _ensure_bank_import_fingerprint(db)
+
+
+def _ensure_bank_import_fingerprint(db: DatabaseHandle) -> None:
+    if not table_exists(db, "bank_transactions"):
+        return
+
+    column_names = {row["name"] for row in db.execute("PRAGMA table_info(bank_transactions)").fetchall()}
+    if "import_fingerprint" not in column_names:
+        db.execute("ALTER TABLE bank_transactions ADD COLUMN import_fingerprint TEXT")
+
+    needs_fp = db.execute(
+        """
+        SELECT id, reporting_period_id, transaction_date, details, transaction_type,
+               money_in, money_out, is_opening_balance,
+               source_workbook, source_sheet, source_row_number
+        FROM bank_transactions
+        WHERE import_fingerprint IS NULL OR TRIM(COALESCE(import_fingerprint, '')) = ''
+        """
+    ).fetchall()
+    for row in needs_fp:
+        extra = _system_import_identity_extra(
+            row["source_workbook"],
+            row["source_sheet"],
+            row["source_row_number"],
+        )
+        fp = _bank_transaction_import_fingerprint(
+            row["reporting_period_id"],
+            row["transaction_date"],
+            (row["details"] or "").strip(),
+            row["transaction_type"],
+            float(row["money_in"] or 0),
+            float(row["money_out"] or 0),
+            is_opening_balance=int(row["is_opening_balance"] or 0),
+            import_identity_extra=extra,
+        )
+        db.execute(
+            "UPDATE bank_transactions SET import_fingerprint = ? WHERE id = ?",
+            (fp, row["id"]),
+        )
+
+    while True:
+        dup = db.execute(
+            """
+            SELECT import_fingerprint AS fp
+            FROM bank_transactions
+            GROUP BY import_fingerprint
+            HAVING COUNT(*) > 1
+            LIMIT 1
+            """
+        ).fetchone()
+        if dup is None or dup["fp"] in (None, ""):
+            break
+        fp_val = dup["fp"]
+        keep_row = db.execute(
+            "SELECT MIN(id) AS keep_id FROM bank_transactions WHERE import_fingerprint = ?",
+            (fp_val,),
+        ).fetchone()
+        if keep_row is None:
+            break
+        keep_id = keep_row["keep_id"]
+        db.execute(
+            "DELETE FROM bank_transactions WHERE import_fingerprint = ? AND id != ?",
+            (fp_val, keep_id),
+        )
+
+    db.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_bank_transactions_import_fingerprint
+        ON bank_transactions (import_fingerprint)
+        """
+    )
 
 
 def _ensure_cash_settlement_migration(db: DatabaseHandle) -> None:
@@ -1860,6 +2202,16 @@ def create_cash_settlement(
     settlement_index = int(settlement_index_row["total"] or 0) + 1
     source_row_number = reporting_period_id * 100000 + int(meeting_row["sort_order"] or 0) * 100 + settlement_index
 
+    cash_extra = _system_import_identity_extra("system", "cash_settlement", source_row_number)
+    cash_fp = _bank_transaction_import_fingerprint(
+        reporting_period_id,
+        settlement_date,
+        details,
+        "Cash deposit",
+        net_amount,
+        0.0,
+        import_identity_extra=cash_extra,
+    )
     bank_transaction = db.execute(
         """
         INSERT INTO bank_transactions (
@@ -1872,9 +2224,10 @@ def create_cash_settlement(
             source_workbook,
             source_sheet,
             source_row_number,
-            notes
+            notes,
+            import_fingerprint
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id
         """,
         (
@@ -1888,6 +2241,7 @@ def create_cash_settlement(
             "cash_settlement",
             source_row_number,
             notes,
+            cash_fp,
         ),
     ).fetchone()
 
@@ -2037,7 +2391,7 @@ def import_bank_transactions_from_workbook(
             source_sheet=WORKBOOK_BANK_SHEET,
             source_row_number=row_number,
             transaction_date=transaction_date,
-            details=details or "Imported transaction",
+            details=details,
             transaction_type=transaction_type or None,
             money_in=money_in,
             money_out=money_out,
@@ -2072,6 +2426,7 @@ def import_bank_transactions_from_workbook(
                     )
             imported += 1
 
+    recompute_bank_running_balances(db, reporting_period_id)
     return imported
 
 
@@ -2226,6 +2581,16 @@ def seed_bank_transactions_from_payments(
     ).fetchall()
 
     for payment in payment_rows:
+        pay_extra = _system_import_identity_extra("system", "payments", int(payment["id"]))
+        pay_fp = _bank_transaction_import_fingerprint(
+            reporting_period_id,
+            payment["payment_date"],
+            f'{payment["full_name"]} payment',
+            payment["payment_method"],
+            float(payment["total_amount"]),
+            0.0,
+            import_identity_extra=pay_extra,
+        )
         bank_transaction = db.execute(
             """
             INSERT INTO bank_transactions (
@@ -2238,9 +2603,10 @@ def seed_bank_transactions_from_payments(
                 source_workbook,
                 source_sheet,
                 source_row_number,
-                notes
+                notes,
+                import_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
             (
@@ -2254,6 +2620,7 @@ def seed_bank_transactions_from_payments(
                 "payments",
                 int(payment["id"]),
                 payment["reference"],
+                pay_fp,
             ),
         ).fetchone()
         bank_transaction_id = bank_transaction["id"]
@@ -2479,6 +2846,199 @@ def seed_virtual_account_transfers_from_workbook(
     )
 
 
+def list_virtual_account_transfers_for_period(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+) -> list[sqlite3.Row]:
+    return db.execute(
+        """
+        SELECT
+            vat.id,
+            vat.from_virtual_account_id,
+            vat.to_virtual_account_id,
+            vat.amount,
+            vat.transfer_date,
+            vat.description,
+            vat.notes,
+            vat.source_workbook,
+            vat.source_sheet,
+            vat.source_row_number,
+            from_va.code AS from_account_code,
+            to_va.code AS to_account_code
+        FROM virtual_account_transfers vat
+        LEFT JOIN virtual_accounts from_va ON from_va.id = vat.from_virtual_account_id
+        LEFT JOIN virtual_accounts to_va ON to_va.id = vat.to_virtual_account_id
+        WHERE vat.reporting_period_id = ?
+        ORDER BY (vat.transfer_date IS NULL) ASC, vat.transfer_date ASC, vat.id ASC
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+
+
+def list_virtual_account_transfers_for_account(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    virtual_account_id: int,
+) -> list[sqlite3.Row]:
+    return db.execute(
+        """
+        SELECT
+            vat.id,
+            vat.from_virtual_account_id,
+            vat.to_virtual_account_id,
+            vat.amount,
+            vat.transfer_date,
+            vat.description,
+            vat.notes,
+            vat.source_workbook,
+            vat.source_sheet,
+            vat.source_row_number,
+            from_va.code AS from_account_code,
+            from_va.display_name AS from_display_name,
+            to_va.code AS to_account_code,
+            to_va.display_name AS to_display_name
+        FROM virtual_account_transfers vat
+        LEFT JOIN virtual_accounts from_va ON from_va.id = vat.from_virtual_account_id
+        LEFT JOIN virtual_accounts to_va ON to_va.id = vat.to_virtual_account_id
+        WHERE vat.reporting_period_id = ?
+          AND (
+            vat.from_virtual_account_id = ?
+            OR vat.to_virtual_account_id = ?
+          )
+        ORDER BY (vat.transfer_date IS NULL) ASC, vat.transfer_date ASC, vat.id ASC
+        """,
+        (reporting_period_id, virtual_account_id, virtual_account_id),
+    ).fetchall()
+
+
+def virtual_account_transfer_involves_account(
+    db: sqlite3.Connection,
+    *,
+    transfer_id: int,
+    reporting_period_id: int,
+    virtual_account_id: int,
+) -> bool:
+    row = db.execute(
+        """
+        SELECT 1 AS ok
+        FROM virtual_account_transfers
+        WHERE id = ?
+          AND reporting_period_id = ?
+          AND (
+            from_virtual_account_id = ?
+            OR to_virtual_account_id = ?
+          )
+        """,
+        (transfer_id, reporting_period_id, virtual_account_id, virtual_account_id),
+    ).fetchone()
+    return row is not None
+
+
+def insert_manual_virtual_account_transfer(
+    db: sqlite3.Connection,
+    *,
+    reporting_period_id: int,
+    from_virtual_account_id: int,
+    to_virtual_account_id: int,
+    amount: float,
+    transfer_date: str | None,
+    description: str,
+    notes: str | None = None,
+) -> int:
+    if from_virtual_account_id == to_virtual_account_id:
+        raise ValueError("Transfers must use two different accounts.")
+    if amount <= 0:
+        raise ValueError("Amount must be greater than zero.")
+    desc = (description or "").strip()
+    if not desc:
+        raise ValueError("Description is required.")
+    cursor = db.execute(
+        """
+        INSERT INTO virtual_account_transfers (
+            reporting_period_id,
+            from_virtual_account_id,
+            to_virtual_account_id,
+            amount,
+            transfer_date,
+            description,
+            notes,
+            source_workbook,
+            source_sheet,
+            source_row_number
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+        """,
+        (
+            reporting_period_id,
+            from_virtual_account_id,
+            to_virtual_account_id,
+            round(float(amount), 2),
+            transfer_date or None,
+            desc,
+            ((notes or "").strip() or None),
+        ),
+    )
+    return int(cursor.lastrowid)
+
+
+def update_virtual_account_transfer(
+    db: sqlite3.Connection,
+    *,
+    transfer_id: int,
+    reporting_period_id: int,
+    from_virtual_account_id: int,
+    to_virtual_account_id: int,
+    amount: float,
+    transfer_date: str | None,
+    description: str,
+    notes: str | None = None,
+) -> bool:
+    if from_virtual_account_id == to_virtual_account_id:
+        raise ValueError("Transfers must use two different accounts.")
+    if amount <= 0:
+        raise ValueError("Amount must be greater than zero.")
+    desc = (description or "").strip()
+    if not desc:
+        raise ValueError("Description is required.")
+    cursor = db.execute(
+        """
+        UPDATE virtual_account_transfers
+        SET
+            from_virtual_account_id = ?,
+            to_virtual_account_id = ?,
+            amount = ?,
+            transfer_date = ?,
+            description = ?,
+            notes = ?
+        WHERE id = ? AND reporting_period_id = ?
+        """,
+        (
+            from_virtual_account_id,
+            to_virtual_account_id,
+            round(float(amount), 2),
+            transfer_date or None,
+            desc,
+            ((notes or "").strip() or None),
+            transfer_id,
+            reporting_period_id,
+        ),
+    )
+    return cursor.rowcount > 0
+
+
+def delete_virtual_account_transfer(
+    db: sqlite3.Connection,
+    *,
+    transfer_id: int,
+    reporting_period_id: int,
+) -> bool:
+    cursor = db.execute(
+        "DELETE FROM virtual_account_transfers WHERE id = ? AND reporting_period_id = ?",
+        (transfer_id, reporting_period_id),
+    )
+    return cursor.rowcount > 0
+
+
 def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | None = None) -> list[dict[str, object]]:
     reporting_period_id = reporting_period_id or _current_reporting_period_id(db)
     account_rows = db.execute(
@@ -2511,6 +3071,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
 
     account_index = {
         row["code"]: {
+            "id": int(row["id"]),
             "code": row["code"],
             "display_name": row["display_name"],
             "sort_order": row["sort_order"],
@@ -2527,7 +3088,10 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
     }
 
     if "MAIN" not in account_index:
+        main_id_row = db.execute("SELECT id FROM virtual_accounts WHERE code = 'MAIN'").fetchone()
+        main_id = int(main_id_row["id"]) if main_id_row else None
         account_index["MAIN"] = {
+            "id": main_id,
             "code": "MAIN",
             "display_name": "Main",
             "sort_order": 10,
@@ -2569,7 +3133,13 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
     for row in entry_rows:
         account_code = category_map.get(row["ledger_category_id"], "MAIN")
         if account_code not in account_index:
+            dyn_id_row = db.execute(
+                "SELECT id FROM virtual_accounts WHERE code = ?",
+                (account_code,),
+            ).fetchone()
+            dyn_id = int(dyn_id_row["id"]) if dyn_id_row else None
             account_index[account_code] = {
+                "id": dyn_id,
                 "code": account_code,
                 "display_name": account_code.title(),
                 "sort_order": 999,
@@ -2635,7 +3205,13 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
     for row in cash_entry_rows:
         account_code = category_map.get(row["ledger_category_id"], "MAIN")
         if account_code not in account_index:
+            dyn_id_row = db.execute(
+                "SELECT id FROM virtual_accounts WHERE code = ?",
+                (account_code,),
+            ).fetchone()
+            dyn_id = int(dyn_id_row["id"]) if dyn_id_row else None
             account_index[account_code] = {
+                "id": dyn_id,
                 "code": account_code,
                 "display_name": account_code.title(),
                 "sort_order": 999,
@@ -2839,7 +3415,7 @@ def backfill_bank_allocations_from_workbook(
         for candidate in candidate_rows:
             score = _score_bank_transaction_match(
                 transaction_date,
-                details or "Imported transaction",
+                details,
                 transaction_type or None,
                 candidate,
             )
@@ -2911,7 +3487,6 @@ def init_db() -> None:
     )
 
     member_rows = [
-        ("*Visitor", "VISITOR", None, 0.00, 0.00, 0.00, 0.00, ""),
         ("Awcock,David", "FULL", None, 200.00, 200.00, 125.00, 125.00, ""),
         ("Bradley Brown", "FULL", None, 120.00, 120.00, 75.00, 75.00, ""),
         ("Chipperfield,David", "ND", None, 200.00, 200.00, 0.00, 0.00, ""),
@@ -3153,13 +3728,11 @@ def init_app(app) -> None:
                 db.commit()
                 print(f"Imported {imported} bank transactions from the workbook.")
                 return
-        allocation_totals = backfill_bank_allocations_from_workbook(db, reporting_period_id)
         db.commit()
         print(
             "Imported "
             f"{totals['inserted']} new and updated {totals['updated']} bank statement rows "
-            f"from {totals['files']} CSV file(s). "
-            f"Refreshed {allocation_totals['allocations_written']} allocations from the workbook."
+            f"from {totals['files']} CSV file(s)."
         )
 
     @app.cli.command("import-cashbook")

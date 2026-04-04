@@ -1,7 +1,11 @@
-# Copy this file to config.local and edit the values for your machine.
-# Treat it as the machine-specific hardcode for the live DB path.
-# If this machine uses the shared live DB, point TREASURER_DATABASE at the UNC path.
+# Copy to config.local next to start.bat (optional).
+# If you omit this file, the live database is Treasurer.db in the project folder.
 
-TREASURER_DATABASE=\\DEN\TreasurerDB\Treasurer.db
+# Optional — live database somewhere else on this laptop only:
+# TREASURER_DATABASE=D:\TreasurerData\Treasurer.db
+
+# Optional — mirrored backup file or folder (Settings can also set this):
 # TREASURER_BACKUP_DATABASE=C:\Users\YourName\Documents\Treasurer Backups\Treasurer.backup.db
-# TREASURER_RUNTIME_LOCK=0
+
+# Optional — set to 1 so only one app instance uses the database at a time (recommended):
+# TREASURER_RUNTIME_LOCK=1

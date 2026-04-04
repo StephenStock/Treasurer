@@ -1,5 +1,7 @@
 import os
+import platform
 import sqlite3
+import subprocess
 import threading
 import tempfile
 from datetime import date, datetime
@@ -7,9 +9,13 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
+from .backup_mirror_health import clear_failure as clear_backup_mirror_failure
+from .backup_mirror_health import record_failure as record_backup_mirror_failure
 from .db import (
     APP_SETTING_BACKUP_DATABASE,
     APP_SETTING_BACKUP_FOLDER,
+    APP_SETTING_LODGE_DISPLAY_NAME,
+    DEFAULT_LODGE_DISPLAY_NAME,
     _dues_status,
     _find_existing_workbook,
     backup_database,
@@ -24,7 +30,10 @@ from .db import (
     import_bank_statement_exports,
     import_bank_statement_uploads,
     import_bank_transactions_from_workbook,
+    delete_virtual_account_transfer,
     _insert_cash_settlement_row,
+    insert_manual_virtual_account_transfer,
+    list_virtual_account_transfers_for_account,
     replace_bank_transaction_allocations,
     replace_virtual_account_category_map,
     seed_meeting_schedule,
@@ -32,17 +41,26 @@ from .db import (
     consolidate_virtual_accounts,
     resolve_backup_folder_path,
     resolve_backup_database_path,
+    resolve_mirror_backup_file_path,
     restore_database_from_backup,
     release_runtime_lock,
     set_app_setting,
     virtual_account_report,
     table_exists,
+    update_virtual_account_transfer,
+    virtual_account_transfer_involves_account,
     _normalize_member_name,
     virtual_account_category_mappings,
 )
 
 
 main_bp = Blueprint("main", __name__)
+
+
+@main_bp.route("/healthz")
+def healthz():
+    """Lightweight liveness probe for reverse proxies and deploy scripts (no DB access)."""
+    return ("ok", 200, {"Content-Type": "text/plain; charset=utf-8"})
 
 
 def _launcher_exit_signal_path() -> Path:
@@ -65,6 +83,23 @@ def inject_balance_nav_accounts():
         return {"balance_nav_accounts": virtual_account_report(db)}
     except Exception:
         return {"balance_nav_accounts": []}
+
+
+@main_bp.app_context_processor
+def inject_backup_mirror_health():
+    from flask import current_app
+
+    return {
+        "backup_mirror_error": current_app.config.get("BACKUP_LAST_ERROR"),
+        "backup_mirror_error_at": current_app.config.get("BACKUP_LAST_ERROR_AT"),
+    }
+
+
+def _lodge_display_name(db: sqlite3.Connection) -> str:
+    name = get_app_setting(db, APP_SETTING_LODGE_DISPLAY_NAME)
+    if name and str(name).strip():
+        return str(name).strip()
+    return DEFAULT_LODGE_DISPLAY_NAME
 
 
 def _bank_page_context():
@@ -103,8 +138,15 @@ def _bank_page_context():
          AND meeting.meeting_key = cs.meeting_key
         WHERE bt.reporting_period_id = ?
         ORDER BY
-            bt.transaction_date DESC,
-            bt.id DESC
+            CASE WHEN bt.transaction_date IS NULL OR bt.transaction_date = '' THEN 1 ELSE 0 END,
+            bt.transaction_date ASC,
+            COALESCE(bt.source_workbook, '') ASC,
+            CASE WHEN bt.is_opening_balance = 1 THEN 0 ELSE 1 END,
+            CASE
+                WHEN bt.source_sheet = 'CSV' THEN -COALESCE(bt.source_row_number, bt.id)
+                ELSE COALESCE(bt.source_row_number, bt.id)
+            END ASC,
+            bt.id ASC
         """,
         (reporting_period_id,),
     ).fetchall()
@@ -332,10 +374,15 @@ def _statement_page_context():
         FROM bank_transactions
         WHERE reporting_period_id = ?
           AND running_balance IS NOT NULL
+          AND is_opening_balance = 0
         ORDER BY
             CASE WHEN transaction_date IS NULL OR transaction_date = '' THEN 1 ELSE 0 END,
             transaction_date DESC,
-            id DESC
+            CASE
+                WHEN source_sheet = 'CSV' THEN COALESCE(source_row_number, id)
+                ELSE -COALESCE(source_row_number, id)
+            END ASC,
+            id ASC
         LIMIT 1
         """,
         (reporting_period_id,),
@@ -347,7 +394,12 @@ def _statement_page_context():
         FROM bank_transactions
         WHERE reporting_period_id = ?
           AND is_opening_balance = 1
-        ORDER BY transaction_date, id
+        ORDER BY
+            CASE WHEN transaction_date IS NULL OR transaction_date = '' THEN 1 ELSE 0 END,
+            transaction_date ASC,
+            COALESCE(source_workbook, '') ASC,
+            COALESCE(source_row_number, id) ASC,
+            id ASC
         LIMIT 1
         """,
         (reporting_period_id,),
@@ -450,6 +502,19 @@ def _statement_page_context():
 
     balance_total = round(sum(float(row["closing_balance"] or 0) for row in balance_rows), 2)
 
+    # Lodge returns (General, Charity, Benevolent): L.O.I. is tracked separately—not part of the lodge’s
+    # formal accounts or Grand Lodge reporting; collections are informational through the shared bank account.
+    statement_income_total = round(
+        general_income_total + charity_income_total + benevolent_income_total,
+        2,
+    )
+    statement_expense_total = round(
+        general_expense_total + charity_expense_total + benevolent_expense_total,
+        2,
+    )
+    statement_net_result = round(statement_income_total - statement_expense_total, 2)
+    loi_statement_net = round(loi_income_total - loi_expense_total, 2)
+
     return {
         "statement_sections": [
             {
@@ -481,29 +546,13 @@ def _statement_page_context():
                 "expense_total": loi_expense_total,
             },
         ],
-        "income_total": round(
-            general_income_total + charity_income_total + benevolent_income_total + loi_income_total,
-            2,
-        ),
-        "expense_total": round(
-            general_expense_total + charity_expense_total + benevolent_expense_total + loi_expense_total,
-            2,
-        ),
-        "net_result": round(
-            (
-                general_income_total
-                + charity_income_total
-                + benevolent_income_total
-                + loi_income_total
-            )
-            - (
-                general_expense_total
-                + charity_expense_total
-                + benevolent_expense_total
-                + loi_expense_total
-            ),
-            2,
-        ),
+        "income_total": statement_income_total,
+        "expense_total": statement_expense_total,
+        # Always income_total − expense_total (Statement strip, Auditors header, summary table footer).
+        "net_result": statement_net_result,
+        "loi_income_total": round(loi_income_total, 2),
+        "loi_expense_total": round(loi_expense_total, 2),
+        "loi_net_result": loi_statement_net,
         "latest_bank_balance": latest_balance["running_balance"] if latest_balance else None,
         "opening_bank_balance": opening_bank_balance["running_balance"] if opening_bank_balance else None,
         "bank_receipts_total": round(float(total_receipts or 0), 2),
@@ -511,6 +560,7 @@ def _statement_page_context():
         "uncategorised_transactions": uncategorised_transactions,
         "balance_rows": balance_rows,
         "balance_total": balance_total,
+        "statement_lodge_name": _lodge_display_name(db),
     }
 
 
@@ -731,9 +781,11 @@ def _members_page_context():
         LEFT JOIN dues d
           ON d.member_id = m.id
          AND d.reporting_period_id = ?
+        WHERE m.full_name <> ?
+          AND COALESCE(mt.code, '') <> ?
         ORDER BY m.full_name
         """,
-        (reporting_period_id,),
+        (reporting_period_id, "*Visitor", "VISITOR"),
     ).fetchall()
 
     members = []
@@ -768,53 +820,55 @@ def _members_page_context():
 def _backup_status_context():
     db = get_db()
     database_path = Path(current_app.config["DATABASE"])
-    backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(database_path))
+    backup_file = resolve_backup_database_path(database_path)
+    current_app.config["BACKUP_DATABASE"] = str(backup_file)
 
     selected_folder = get_app_setting(db, APP_SETTING_BACKUP_FOLDER)
     selected_legacy_backup = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
     backup_folder_selected = bool(selected_folder or selected_legacy_backup)
 
-    if selected_folder:
-        backup_folder_path = Path(selected_folder)
-    elif selected_legacy_backup:
-        legacy_path = Path(selected_legacy_backup)
-        backup_folder_path = legacy_path.parent if legacy_path.suffix.lower() == ".db" else legacy_path
-    else:
-        backup_folder_path = backup_path.parent
+    backup_folder_effective = backup_file.parent
+    backup_file_effective = backup_file
 
-    backup_file_exists = backup_path.exists()
+    backup_file_exists = backup_file_effective.exists()
     last_backup_at = None
     if backup_file_exists:
-        last_backup_at = datetime.fromtimestamp(backup_path.stat().st_mtime)
+        last_backup_at = datetime.fromtimestamp(backup_file_effective.stat().st_mtime)
 
+    folder_label = str(backup_folder_effective)
     if backup_folder_selected:
         if backup_file_exists and last_backup_at is not None:
             dashboard_summary = (
-                f"Backup folder selected at {backup_folder_path}. Last backup {last_backup_at.strftime('%Y-%m-%d %H:%M')}."
-            )
-        elif backup_file_exists:
-            dashboard_summary = f"Backup folder selected at {backup_folder_path}. Backup file is present."
-        else:
-            dashboard_summary = f"Backup folder selected at {backup_folder_path}. No backup file has been created yet."
-    else:
-        if backup_file_exists and last_backup_at is not None:
-            dashboard_summary = (
-                f"No backup folder selected yet. Using automatic backup location at {backup_folder_path}. "
+                f"Backup folder selected. Files are written under {folder_label}. "
                 f"Last backup {last_backup_at.strftime('%Y-%m-%d %H:%M')}."
             )
         elif backup_file_exists:
             dashboard_summary = (
-                f"No backup folder selected yet. Using automatic backup location at {backup_folder_path}. Backup file is present."
+                f"Backup folder selected. Files are written under {folder_label}. Backup file is present."
             )
         else:
             dashboard_summary = (
-                f"No backup folder selected yet. Using automatic backup location at {backup_folder_path}. No backup file has been created yet."
+                f"Backup folder selected. Files are written under {folder_label}. No backup file has been created yet."
+            )
+    else:
+        if backup_file_exists and last_backup_at is not None:
+            dashboard_summary = (
+                f"No backup folder selected yet. Using automatic location {folder_label}. "
+                f"Last backup {last_backup_at.strftime('%Y-%m-%d %H:%M')}."
+            )
+        elif backup_file_exists:
+            dashboard_summary = (
+                f"No backup folder selected yet. Using automatic location {folder_label}. Backup file is present."
+            )
+        else:
+            dashboard_summary = (
+                f"No backup folder selected yet. Using automatic location {folder_label}. No backup file has been created yet."
             )
 
     return {
         "backup_folder_selected": backup_folder_selected,
-        "backup_folder_path": backup_folder_path,
-        "backup_file_path": backup_path,
+        "backup_folder_effective": backup_folder_effective,
+        "backup_file_effective": backup_file_effective,
         "backup_file_exists": backup_file_exists,
         "backup_last_backed_up": last_backup_at,
         "backup_dashboard_summary": dashboard_summary,
@@ -824,6 +878,19 @@ def _backup_status_context():
             else "Backup folder selected in Settings."
         ),
     }
+
+
+def _backup_folder_form_value(db) -> str:
+    """Raw folder path from Settings (may be relative); empty if using automatic location."""
+    raw = get_app_setting(db, APP_SETTING_BACKUP_FOLDER)
+    if raw is None:
+        raw = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
+    if not raw:
+        return ""
+    raw = str(raw).strip()
+    if raw.lower().endswith(".db"):
+        return str(Path(raw).parent)
+    return raw
 
 
 def _runtime_lock_context():
@@ -904,6 +971,14 @@ def dashboard():
         for row in arrears_rows
     ]
 
+    arrears_totals = {
+        "subscription_due": round(sum(member["subscription_due"] for member in arrears_members), 2),
+        "subscription_paid": round(sum(member["subscription_paid"] for member in arrears_members), 2),
+        "dining_due": round(sum(member["dining_due"] for member in arrears_members), 2),
+        "dining_paid": round(sum(member["dining_paid"] for member in arrears_members), 2),
+        "total_outstanding": round(sum(member["total_outstanding"] for member in arrears_members), 2),
+    }
+
     stats["arrears_count"] = len(arrears_members)
 
     return render_template(
@@ -911,6 +986,7 @@ def dashboard():
         active_page="home",
         stats=stats,
         arrears_members=arrears_members,
+        arrears_totals=arrears_totals,
         **backup_status,
         **runtime_lock_status,
     )
@@ -933,9 +1009,9 @@ def _handle_app_exit():
         pass
 
     try:
-        backup_database(db, backup_path)
-    except Exception:
-        pass
+        backup_database(db, backup_path, primary_path=Path(current_app.config["DATABASE"]))
+    except Exception as exc:
+        record_backup_mirror_failure(current_app, exc, detail="Final backup when exiting failed.")
 
     try:
         db.commit()
@@ -955,6 +1031,60 @@ def _handle_app_exit():
 @main_bp.post("/app/exit")
 def exit_app():
     return _handle_app_exit()
+
+
+@main_bp.post("/backup/run")
+def run_backup_now():
+    db = get_db()
+    database_path = Path(current_app.config["DATABASE"])
+    backup_raw = current_app.config.get("BACKUP_DATABASE") or ""
+    backup_file = (
+        resolve_mirror_backup_file_path(Path(backup_raw), database_path)
+        if backup_raw
+        else resolve_backup_database_path(database_path)
+    )
+    try:
+        backup_database(db, backup_file, primary_path=database_path)
+        db.commit()
+        clear_backup_mirror_failure(current_app)
+        current_app.config["BACKUP_DATABASE"] = str(backup_file)
+        flash(
+            f"Mirrored backup saved: {backup_file.name} in {backup_file.parent}",
+            "success",
+        )
+    except ValueError as exc:
+        record_backup_mirror_failure(current_app, exc, detail="Manual backup from Settings failed.")
+        flash(str(exc), "error")
+    except Exception as exc:
+        record_backup_mirror_failure(current_app, exc, detail="Manual backup from Settings failed.")
+        flash(
+            "The backup could not be written. Check the red warning above, your backup folder path, and disk space.",
+            "error",
+        )
+    return redirect(url_for("main.settings"))
+
+
+@main_bp.get("/backup/open-folder")
+def open_backup_folder():
+    """Open the resolved mirrored-backup folder in the system file manager (local use)."""
+    database_path = Path(current_app.config["DATABASE"])
+    folder = resolve_backup_database_path(database_path).parent.resolve()
+    folder_str = str(folder)
+    system = platform.system()
+    try:
+        if system == "Windows":
+            subprocess.Popen(  # noqa: S603 — fixed argv, local folder only
+                ["explorer", folder_str],
+                close_fds=True,
+            )
+        elif system == "Darwin":
+            subprocess.Popen(["open", folder_str], close_fds=True)  # noqa: S603
+        else:
+            subprocess.Popen(["xdg-open", folder_str], close_fds=True)  # noqa: S603
+    except OSError:
+        flash(f"Could not open the file manager. Backup folder: {folder_str}", "error")
+        return redirect(request.referrer or url_for("main.settings"))
+    return redirect(request.referrer or url_for("main.settings"))
 
 
 @main_bp.post("/backup/restore")
@@ -997,6 +1127,10 @@ def bank_import():
         totals = import_bank_statement_uploads(db, reporting_period_id, uploaded_files)
     else:
         totals = import_bank_statement_exports(db, reporting_period_id=reporting_period_id)
+        totals = {**totals, "errors": []}
+
+    for err in totals.get("errors", []):
+        flash(err, "error")
 
     if totals["files"] == 0 and not has_uploads:
         workbook_path = _find_existing_workbook()
@@ -1009,23 +1143,17 @@ def bank_import():
                 flash("No bank statement rows needed importing.", "info")
             return redirect(url_for("main.bank"))
 
-    allocation_totals = {"transactions_matched": 0, "allocations_written": 0}
-    if totals["files"] > 0:
-        allocation_totals = backfill_bank_allocations_from_workbook(db, reporting_period_id)
-
     db.commit()
     if totals["inserted"] or totals["updated"]:
         source_label = "uploaded file(s)" if has_uploads else "CSV file(s)"
-        if allocation_totals["transactions_matched"]:
-            allocation_note = (
-                f" Refreshed {allocation_totals['allocations_written']} allocations from the workbook."
-            )
-        else:
-            allocation_note = ""
         flash(
-            f"Imported {totals['inserted']} new and updated {totals['updated']} bank statement rows from {totals['files']} {source_label}.{allocation_note}",
+            f"Imported {totals['inserted']} new and updated {totals['updated']} bank statement rows from {totals['files']} {source_label}.",
             "success",
         )
+    elif has_uploads and totals.get("errors"):
+        flash("No new bank rows were imported from your upload(s).", "error")
+    elif has_uploads:
+        flash("No bank statement rows needed importing from the uploaded file(s).", "info")
     else:
         flash("No bank statement rows needed importing.", "info")
     return redirect(url_for("main.bank"))
@@ -1276,7 +1404,6 @@ def statement():
     return render_template(
         "statement.html",
         active_page="statement",
-        statement_lodge_name="Stanford-le-Hope Lodge No. 5217",
         statement_year_label=_statement_year_label(),
         **_statement_page_context(),
     )
@@ -1296,14 +1423,6 @@ def _auditors_page_context():
                 "net_total": round(section["income_total"] - section["expense_total"], 2),
             }
         )
-
-    audit_checks = [
-        "Do the totals on this page add up to the printed statement?",
-        "Does the closing bank balance match the bank statement?",
-        "Are all cash settlements recorded and banked?",
-        "Are there any unexplained or uncategorised rows?",
-        "Do the opening and closing account balances look sensible?",
-    ]
 
     reporting_period_id = _current_reporting_period_id()
     cash_rows = db.execute(
@@ -1369,10 +1488,8 @@ def _auditors_page_context():
 
     return {
         **statement_context,
-        "statement_lodge_name": "Stanford-le-Hope Lodge No. 5217",
         "statement_year_label": _statement_year_label(),
         "audit_sections": audit_sections,
-        "audit_checks": audit_checks,
         "account_histories": account_histories,
         "cash_statements": [
             {
@@ -1385,39 +1502,77 @@ def _auditors_page_context():
             for row in cash_rows
         ],
         "cash_book_details": cash_book_details,
-        "member_statuses": [
+        **(_auditors_member_payment_block(db, reporting_period_id)),
+    }
+
+
+def _auditors_member_payment_block(db, reporting_period_id: int) -> dict:
+    """Member dues rows plus unpaid summary (due minus paid, floored at zero)."""
+    rows = db.execute(
+        """
+        SELECT
+            m.membership_number,
+            m.full_name,
+            mt.code AS member_type,
+            m.status,
+            d.subscription_due,
+            d.subscription_paid,
+            d.dining_due,
+            d.dining_paid
+        FROM members m
+        LEFT JOIN member_types mt ON mt.id = m.member_type_id
+        LEFT JOIN dues d
+            ON d.member_id = m.id
+           AND d.reporting_period_id = ?
+        ORDER BY m.membership_number
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+
+    member_statuses = []
+    total_subs_out = 0.0
+    total_dining_out = 0.0
+    members_with_shortfall = 0
+
+    for row in rows:
+        sd = float(row["subscription_due"] or 0)
+        sp = float(row["subscription_paid"] or 0)
+        dd = float(row["dining_due"] or 0)
+        dp = float(row["dining_paid"] or 0)
+        subs_out = max(0.0, round(sd - sp, 2))
+        dining_out = max(0.0, round(dd - dp, 2))
+        has_shortfall = subs_out > 0 or dining_out > 0
+        if has_shortfall:
+            members_with_shortfall += 1
+        total_subs_out += subs_out
+        total_dining_out += dining_out
+        member_statuses.append(
             {
                 "membership_number": row["membership_number"],
                 "full_name": row["full_name"],
                 "member_type": row["member_type"] or "Unknown",
                 "status": row["status"],
-                "subscription_due": row["subscription_due"] or 0.0,
-                "subscription_paid": row["subscription_paid"] or 0.0,
-                "dining_due": row["dining_due"] or 0.0,
-                "dining_paid": row["dining_paid"] or 0.0,
+                "subscription_due": sd,
+                "subscription_paid": sp,
+                "dining_due": dd,
+                "dining_paid": dp,
+                "subscription_outstanding": subs_out,
+                "dining_outstanding": dining_out,
+                "has_payment_shortfall": has_shortfall,
             }
-            for row in db.execute(
-                """
-                SELECT
-                    m.membership_number,
-                    m.full_name,
-                    mt.code AS member_type,
-                    m.status,
-                    d.subscription_due,
-                    d.subscription_paid,
-                    d.dining_due,
-                    d.dining_paid
-                FROM members m
-                LEFT JOIN member_types mt ON mt.id = m.member_type_id
-                LEFT JOIN dues d
-                    ON d.member_id = m.id
-                   AND d.reporting_period_id = ?
-                ORDER BY m.membership_number
-                """,
-                (reporting_period_id,),
-            ).fetchall()
-        ]
+        )
 
+    combined = round(total_subs_out + total_dining_out, 2)
+    member_arrears_summary = {
+        "members_with_shortfall": members_with_shortfall,
+        "total_subscription_outstanding": round(total_subs_out, 2),
+        "total_dining_outstanding": round(total_dining_out, 2),
+        "combined_outstanding": combined,
+    }
+
+    return {
+        "member_statuses": member_statuses,
+        "member_arrears_summary": member_arrears_summary,
     }
 
 
@@ -1441,26 +1596,41 @@ def balances_index():
 @main_bp.route("/balances/<account_code>")
 def balance_sheet(account_code: str):
     db = get_db()
+    reporting_period_id = _current_reporting_period_id()
     report = virtual_account_report(db)
     selected_account = next((row for row in report if row["code"] == account_code.upper()), None)
     if selected_account is None and report:
         selected_account = report[0]
     elif selected_account is None:
+        aid = _virtual_account_id_for_code(db, account_code)
         selected_account = {
+            "id": aid,
             "code": account_code.upper(),
             "display_name": account_code.title(),
             "opening_balance": 0.0,
             "total_in": 0.0,
             "total_out": 0.0,
+            "transfer_in": 0.0,
+            "transfer_out": 0.0,
             "closing_balance": 0.0,
             "entries": [],
         }
+
+    account_transfers: list = []
+    sub_account_id = selected_account.get("id") if selected_account else None
+    if sub_account_id is not None:
+        account_transfers = list_virtual_account_transfers_for_account(
+            db,
+            reporting_period_id,
+            int(sub_account_id),
+        )
 
     return render_template(
         "balance_sheet.html",
         active_page="balances",
         accounts=report,
         selected_account=selected_account,
+        account_transfers=account_transfers,
     )
 
 
@@ -1815,22 +1985,21 @@ def settings():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
     backup_status = _backup_status_context()
-    suggested_backup_folder_path = str(resolve_backup_folder_path(Path(current_app.config["DATABASE"])))
-    backup_folder_path = get_app_setting(db, APP_SETTING_BACKUP_FOLDER)
-    if backup_folder_path is None:
-        backup_folder_path = get_app_setting(db, APP_SETTING_BACKUP_DATABASE)
-    if backup_folder_path is None:
-        backup_folder_path = suggested_backup_folder_path
-    elif backup_folder_path.endswith(".db"):
-        backup_folder_path = str(Path(backup_folder_path).parent)
-
-    current_app.config["BACKUP_DATABASE"] = str(resolve_backup_database_path(Path(current_app.config["DATABASE"])))
+    database_path = Path(current_app.config["DATABASE"])
+    suggested_backup_folder_path = str(resolve_backup_folder_path(database_path))
+    backup_folder_input_value = _backup_folder_form_value(db)
     seed_virtual_account_balances(db, reporting_period_id)
     consolidate_virtual_accounts(db)
     category_mappings = virtual_account_category_mappings(db)
     virtual_accounts = virtual_account_report(db)
 
     if request.method == "POST":
+        lodge_display_name = request.form.get("lodge_display_name", "").strip()
+        if lodge_display_name:
+            set_app_setting(db, APP_SETTING_LODGE_DISPLAY_NAME, lodge_display_name)
+        else:
+            delete_app_setting(db, APP_SETTING_LODGE_DISPLAY_NAME)
+
         backup_folder_path = request.form.get("backup_folder_path", "").strip()
         if backup_folder_path:
             set_app_setting(db, APP_SETTING_BACKUP_FOLDER, backup_folder_path)
@@ -1841,7 +2010,6 @@ def settings():
         else:
             delete_app_setting(db, APP_SETTING_BACKUP_FOLDER)
             delete_app_setting(db, APP_SETTING_BACKUP_DATABASE)
-            backup_folder_path = str(resolve_backup_folder_path(Path(current_app.config["DATABASE"])))
             current_app.config["BACKUP_DATABASE"] = str(
                 resolve_backup_database_path(Path(current_app.config["DATABASE"]))
             )
@@ -1910,10 +2078,179 @@ def settings():
         "settings.html",
         active_page="settings",
         **backup_status,
+        backup_folder_input_value=backup_folder_input_value,
+        suggested_backup_folder_path=suggested_backup_folder_path,
+        lodge_display_name=_lodge_display_name(db),
+        default_lodge_display_name=DEFAULT_LODGE_DISPLAY_NAME,
         meeting_schedule=_meeting_schedule(),
         virtual_accounts=virtual_accounts,
         category_account_mappings=category_mappings,
     )
+
+
+def _virtual_account_id_for_code(db: sqlite3.Connection, code: str) -> int | None:
+    row = db.execute(
+        "SELECT id FROM virtual_accounts WHERE UPPER(TRIM(code)) = UPPER(TRIM(?))",
+        (code,),
+    ).fetchone()
+    return int(row["id"]) if row else None
+
+
+def _balance_subaccount_transfers_redirect(account_code: str) -> str:
+    return url_for("main.balance_sheet", account_code=account_code.upper()) + "#sub-account-transfers"
+
+
+@main_bp.post("/balances/<account_code>/transfers/add")
+def balance_transfer_add(account_code: str):
+    db = get_db()
+    reporting_period_id = _current_reporting_period_id()
+    ac = account_code.upper()
+    current_id = _virtual_account_id_for_code(db, ac)
+    if current_id is None:
+        flash("Unknown sub-account.", "error")
+        return redirect(url_for("main.balances_index"))
+
+    direction = (request.form.get("direction") or "").strip().lower()
+    other_code = (request.form.get("other_account_code") or "").strip()
+    other_id = _virtual_account_id_for_code(db, other_code)
+    amount_raw = (request.form.get("amount") or "").strip()
+    transfer_date = (request.form.get("transfer_date") or "").strip() or None
+    description = (request.form.get("description") or "").strip()
+    notes = (request.form.get("notes") or "").strip() or None
+
+    if other_id is None:
+        flash("Choose the other sub-account.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+    if other_id == current_id:
+        flash("Pick a different sub-account to transfer with.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    if direction == "out":
+        from_id, to_id = current_id, other_id
+    elif direction == "in":
+        from_id, to_id = other_id, current_id
+    else:
+        flash("Choose whether money is coming in or going out of this sub-account.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    try:
+        amount = float(amount_raw.replace(",", ""))
+    except ValueError:
+        flash("Enter a valid amount.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    try:
+        insert_manual_virtual_account_transfer(
+            db,
+            reporting_period_id=reporting_period_id,
+            from_virtual_account_id=from_id,
+            to_virtual_account_id=to_id,
+            amount=amount,
+            transfer_date=transfer_date,
+            description=description,
+            notes=notes,
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    db.commit()
+    flash("Transfer added for this sub-account.", "success")
+    return redirect(_balance_subaccount_transfers_redirect(ac))
+
+
+@main_bp.post("/balances/<account_code>/transfers/<int:transfer_id>/update")
+def balance_transfer_update(account_code: str, transfer_id: int):
+    db = get_db()
+    reporting_period_id = _current_reporting_period_id()
+    ac = account_code.upper()
+    current_id = _virtual_account_id_for_code(db, ac)
+    if current_id is None:
+        flash("Unknown sub-account.", "error")
+        return redirect(url_for("main.balances_index"))
+
+    if not virtual_account_transfer_involves_account(
+        db,
+        transfer_id=transfer_id,
+        reporting_period_id=reporting_period_id,
+        virtual_account_id=current_id,
+    ):
+        flash("That transfer is not part of this sub-account's register.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    from_code = (request.form.get("from_account_code") or "").strip()
+    to_code = (request.form.get("to_account_code") or "").strip()
+    amount_raw = (request.form.get("amount") or "").strip()
+    transfer_date = (request.form.get("transfer_date") or "").strip() or None
+    description = (request.form.get("description") or "").strip()
+    notes = (request.form.get("notes") or "").strip() or None
+
+    from_id = _virtual_account_id_for_code(db, from_code)
+    to_id = _virtual_account_id_for_code(db, to_code)
+    if from_id is None or to_id is None:
+        flash("Choose valid from and to sub-accounts.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    try:
+        amount = float(amount_raw.replace(",", ""))
+    except ValueError:
+        flash("Enter a valid amount.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    try:
+        updated = update_virtual_account_transfer(
+            db,
+            transfer_id=transfer_id,
+            reporting_period_id=reporting_period_id,
+            from_virtual_account_id=from_id,
+            to_virtual_account_id=to_id,
+            amount=amount,
+            transfer_date=transfer_date,
+            description=description,
+            notes=notes,
+        )
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    if not updated:
+        flash("That transfer was not found for this reporting period.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    db.commit()
+    flash("Transfer updated.", "success")
+    return redirect(_balance_subaccount_transfers_redirect(ac))
+
+
+@main_bp.post("/balances/<account_code>/transfers/<int:transfer_id>/delete")
+def balance_transfer_delete(account_code: str, transfer_id: int):
+    db = get_db()
+    reporting_period_id = _current_reporting_period_id()
+    ac = account_code.upper()
+    current_id = _virtual_account_id_for_code(db, ac)
+    if current_id is None:
+        flash("Unknown sub-account.", "error")
+        return redirect(url_for("main.balances_index"))
+
+    if not virtual_account_transfer_involves_account(
+        db,
+        transfer_id=transfer_id,
+        reporting_period_id=reporting_period_id,
+        virtual_account_id=current_id,
+    ):
+        flash("That transfer is not part of this sub-account's register.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+
+    if not delete_virtual_account_transfer(
+        db,
+        transfer_id=transfer_id,
+        reporting_period_id=reporting_period_id,
+    ):
+        flash("That transfer was not found for this reporting period.", "error")
+        return redirect(_balance_subaccount_transfers_redirect(ac))
+    db.commit()
+    flash("Transfer removed.", "success")
+    return redirect(_balance_subaccount_transfers_redirect(ac))
 
 
 @main_bp.post("/__shutdown")

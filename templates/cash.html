@@ -3,16 +3,6 @@
 {% block title %}Cash | Treasurer Portal{% endblock %}
 
 {% block content %}
-  <section class="hero-card cash-hero">
-    <div>
-      <p class="eyebrow">Cashbook</p>
-      <h2>Cash entries grouped by meeting block, with add, edit, delete, and category assignment built in.</h2>
-    </div>
-    <div class="hero-note">
-      <p>The meeting names and dates are controlled from `Settings`. This keeps the layout close to the workbook while still being fast enough for daily use.</p>
-    </div>
-  </section>
-
   {% for meeting in meeting_blocks %}
     <section class="panel cash-block" data-meeting-key="{{ meeting.meeting_key }}">
       <div class="panel-heading cash-heading">

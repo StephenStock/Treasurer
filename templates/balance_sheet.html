@@ -1,50 +1,50 @@
 {% extends "base.html" %}
 
-{% block title %}{{ selected_account.display_name }} | Balances | Treasurer Portal{% endblock %}
+{% block title %}{{ selected_account.display_name }} | Sub Accounts | Treasurer Portal{% endblock %}
 
 {% block content %}
-  <section class="hero-card statement-hero">
-    <div>
-      <p class="eyebrow">Balance Sheet</p>
+  <section
+    class="subaccount-summary-strip"
+    aria-label="Sub-account balances: opening, movement, transfers, closing"
+    title="Opening balance, ledger movement, transfers, and closing balance for this virtual sub-account."
+  >
+    <div class="subaccount-summary-strip__lead">
+      <p class="eyebrow">Sub Account</p>
       <h2>{{ selected_account.display_name }}</h2>
     </div>
-    <div class="hero-note">
-      <p>Opening balance, movement, and closing balance for the selected virtual account.</p>
+    <div class="subaccount-summary-strip__stats" role="group" aria-label="Balance figures">
+      <div class="subaccount-stat">
+        <span>Opening</span>
+        <strong>&pound;{{ "%.2f"|format(selected_account.opening_balance) }}</strong>
+      </div>
+      <div class="subaccount-stat">
+        <span>In</span>
+        <strong>&pound;{{ "%.2f"|format(selected_account.total_in) }}</strong>
+      </div>
+      <div class="subaccount-stat">
+        <span>Out</span>
+        <strong>&pound;{{ "%.2f"|format(selected_account.total_out) }}</strong>
+      </div>
+      <div class="subaccount-stat">
+        <span>Xfr In</span>
+        <strong>&pound;{{ "%.2f"|format(selected_account.transfer_in) }}</strong>
+      </div>
+      <div class="subaccount-stat">
+        <span>Xfr Out</span>
+        <strong>&pound;{{ "%.2f"|format(selected_account.transfer_out) }}</strong>
+      </div>
+      <div class="subaccount-stat">
+        <span>Closing</span>
+        <strong>&pound;{{ "%.2f"|format(selected_account.closing_balance) }}</strong>
+      </div>
     </div>
-  </section>
-
-  <section class="stats-grid statement-stats">
-    <article class="stat-card">
-      <span>Opening</span>
-      <strong>&pound;{{ "%.2f"|format(selected_account.opening_balance) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>In</span>
-      <strong>&pound;{{ "%.2f"|format(selected_account.total_in) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Out</span>
-      <strong>&pound;{{ "%.2f"|format(selected_account.total_out) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Xfr In</span>
-      <strong>&pound;{{ "%.2f"|format(selected_account.transfer_in) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Xfr Out</span>
-      <strong>&pound;{{ "%.2f"|format(selected_account.transfer_out) }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Closing</span>
-      <strong>&pound;{{ "%.2f"|format(selected_account.closing_balance) }}</strong>
-    </article>
   </section>
 
   <section class="panel statement-panel">
     <div class="panel-heading">
       <div>
-        <h3>Transactions</h3>
-        <p class="section-note">Rows that feed this account.</p>
+        <h3>Ledger entries</h3>
+        <p class="section-note">Bank and cash lines allocated to this sub-account.</p>
       </div>
     </div>
 
@@ -71,11 +71,148 @@
           {% endfor %}
           {% if not selected_account.entries %}
             <tr>
-              <td colspan="6" class="muted-text">No transactions are currently mapped to this account.</td>
+              <td colspan="5" class="muted-text">No transactions are currently mapped to this sub-account.</td>
             </tr>
           {% endif %}
         </tbody>
       </table>
     </div>
   </section>
+
+  {% if selected_account.id is not none %}
+    <section id="sub-account-transfers" class="panel statement-panel subaccount-transfers-panel">
+      <div class="panel-heading">
+        <div>
+          <h3>Transfer register</h3>
+          <p class="section-note">
+            Movements between this sub-account and others for the current reporting period.
+            Each transfer appears on both sub-accounts’ registers; totals feed the Xfr In / Xfr Out figures above and the statement.
+          </p>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('main.balance_transfer_add', account_code=selected_account.code) }}" class="settings-transfer-add-form">
+        <div class="settings-transfer-add-grid">
+          <label class="settings-transfer-field">
+            <span class="settings-transfer-label">Direction</span>
+            <select name="direction" required>
+              <option value="out">Out (to another sub-account)</option>
+              <option value="in">In (from another sub-account)</option>
+            </select>
+          </label>
+          <label class="settings-transfer-field">
+            <span class="settings-transfer-label">Other sub-account</span>
+            <select name="other_account_code" required>
+              <option value="">Choose sub-account</option>
+              {% for account in accounts %}
+                {% if account.code != selected_account.code %}
+                  <option value="{{ account.code }}">{{ account.display_name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </label>
+          <label class="settings-transfer-field">
+            <span class="settings-transfer-label">Amount</span>
+            <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00">
+          </label>
+          <label class="settings-transfer-field">
+            <span class="settings-transfer-label">Date</span>
+            <input type="date" name="transfer_date" value="">
+          </label>
+          <label class="settings-transfer-field settings-transfer-field-grow">
+            <span class="settings-transfer-label">Description</span>
+            <input type="text" name="description" required placeholder="e.g. Centenary allocation">
+          </label>
+          <label class="settings-transfer-field settings-transfer-field-grow">
+            <span class="settings-transfer-label">Notes</span>
+            <input type="text" name="notes" placeholder="Optional">
+          </label>
+          <div class="settings-transfer-field settings-transfer-add-actions">
+            <span class="settings-transfer-label">&nbsp;</span>
+            <button type="submit" class="button button-secondary">Add transfer</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="settings-transfer-list">
+        {% for t in account_transfers %}
+          <div class="settings-transfer-card">
+            {% set is_out = (t.from_account_code == selected_account.code) %}
+            <div class="subaccount-transfer-summary" aria-hidden="true">
+              <span class="section-note">
+                {{ t.transfer_date or "No date" }}
+                ·
+                {% if is_out %}
+                  Out to {{ t.to_display_name or t.to_account_code or "?" }}
+                {% else %}
+                  In from {{ t.from_display_name or t.from_account_code or "?" }}
+                {% endif %}
+                ·
+                &pound;{{ "%.2f"|format(t.amount) }}
+              </span>
+            </div>
+            <form method="post" action="{{ url_for('main.balance_transfer_update', account_code=selected_account.code, transfer_id=t.id) }}" class="settings-transfer-row-form">
+              <div class="settings-transfer-edit-grid">
+                <label class="settings-transfer-field">
+                  <span class="settings-transfer-label">From</span>
+                  <select name="from_account_code" class="settings-transfer-select" required>
+                    {% for account in accounts %}
+                      <option value="{{ account.code }}" {% if account.code == t.from_account_code %}selected{% endif %}>
+                        {{ account.display_name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label class="settings-transfer-field">
+                  <span class="settings-transfer-label">To</span>
+                  <select name="to_account_code" class="settings-transfer-select" required>
+                    {% for account in accounts %}
+                      <option value="{{ account.code }}" {% if account.code == t.to_account_code %}selected{% endif %}>
+                        {{ account.display_name }}
+                      </option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label class="settings-transfer-field">
+                  <span class="settings-transfer-label">Amount</span>
+                  <input type="number" step="0.01" min="0.01" name="amount" class="settings-transfer-amount" value="{{ '%.2f'|format(t.amount) }}" required>
+                </label>
+                <label class="settings-transfer-field">
+                  <span class="settings-transfer-label">Date</span>
+                  <input type="date" name="transfer_date" value="{{ t.transfer_date or '' }}">
+                </label>
+                <label class="settings-transfer-field settings-transfer-field-grow">
+                  <span class="settings-transfer-label">Description</span>
+                  <input type="text" name="description" value="{{ t.description }}" required class="settings-transfer-text">
+                </label>
+                <label class="settings-transfer-field settings-transfer-field-grow">
+                  <span class="settings-transfer-label">Notes</span>
+                  <input type="text" name="notes" value="{{ t.notes or '' }}" class="settings-transfer-text">
+                </label>
+                <div class="settings-transfer-field">
+                  <span class="settings-transfer-label">Source</span>
+                  <div class="settings-transfer-source">
+                    {% if t.source_workbook %}
+                      <span class="section-note" title="{{ t.source_workbook }}{% if t.source_sheet %} · {{ t.source_sheet }}{% endif %}">Workbook</span>
+                    {% else %}
+                      <span class="muted-text">Manual</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="settings-transfer-field settings-transfer-save-field">
+                  <span class="settings-transfer-label">&nbsp;</span>
+                  <button type="submit" class="button button-secondary">Save</button>
+                </div>
+              </div>
+            </form>
+            <form method="post" action="{{ url_for('main.balance_transfer_delete', account_code=selected_account.code, transfer_id=t.id) }}" class="settings-transfer-delete-form" onsubmit="return confirm('Remove this transfer? It will disappear from both sub-accounts.');">
+              <button type="submit" class="button button-secondary">Delete</button>
+            </form>
+          </div>
+        {% else %}
+          <p class="muted-text settings-transfer-empty">No transfers involve this sub-account yet.</p>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
 {% endblock %}

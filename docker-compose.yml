@@ -1,0 +1,37 @@
+# Treasurer on a single host (e.g. Hetzner Cloud CX23) with Docker.
+# Copy .env.example to .env, set SECRET_KEY and SITE_ADDRESS, then: docker compose up -d --build
+
+name: treasurer
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TREASURER_DATABASE: ${TREASURER_DATABASE:-/data/Treasurer.db}
+      TREASURER_BACKUP_DATABASE: ${TREASURER_BACKUP_DATABASE:-/data/Treasurer.backup.db}
+    volumes:
+      - treasurer-data:/data
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  treasurer-data:
+  caddy-data:
+  caddy-config:

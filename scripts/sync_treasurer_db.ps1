@@ -11,6 +11,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$primaryResolved = [System.IO.Path]::GetFullPath($PrimaryDb)
+$backupResolved = [System.IO.Path]::GetFullPath($BackupDb)
+if ($primaryResolved -eq $backupResolved) {
+  return
+}
+
 function Ensure-ParentDirectory {
   param([string]$Path)
 

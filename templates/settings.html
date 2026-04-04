@@ -3,204 +3,233 @@
 {% block title %}Settings | Treasurer Portal{% endblock %}
 
 {% block content %}
-  <section class="hero-card settings-hero">
-    <div>
-      <p class="eyebrow">Settings</p>
-      <h2>Set up the five meeting blocks for the year, including date, title, and meeting type.</h2>
-    </div>
-    <div class="hero-note">
-      <p>These values drive the block layout on the cash page. You can also choose the backup folder that holds the mirrored database file.</p>
-    </div>
-  </section>
-
   <section class="panel">
     <form method="post" class="settings-form">
-      <div class="panel-heading">
-        <div>
-          <h3>Database Backup</h3>
-          <p class="section-note">{{ backup_selection_message }}</p>
+      <section class="settings-section">
+        <div class="panel-heading">
+          <div>
+            <h3>Lodge name on reports</h3>
+            <p class="section-note">Shown at the top of the Statement and Auditors pack. Leave blank to use the default for a new install.</p>
+          </div>
         </div>
-      </div>
-      <div class="backup-status-grid settings-backup-grid">
-        <div class="backup-status-card">
-          <span>Selected folder</span>
-          <strong>{{ backup_folder_path }}</strong>
-          <p class="section-note">
-            {% if backup_folder_selected %}
-              This folder was chosen in Settings.
-            {% else %}
-              This is the automatic fallback folder.
-            {% endif %}
-          </p>
-        </div>
-        <div class="backup-status-card">
-          <span>Backup file</span>
-          <strong>{{ backup_file_path }}</strong>
-          <p class="section-note">
-            {% if backup_file_exists %}
-              The mirrored file exists and can be restored from here.
-            {% else %}
-              No mirrored backup file has been created yet.
-            {% endif %}
-          </p>
-        </div>
-        <div class="backup-status-card">
-          <span>Last backup</span>
-          <strong>
-            {% if backup_last_backed_up %}
-              {{ backup_last_backed_up.strftime('%Y-%m-%d %H:%M') }}
-            {% else %}
-              No backup yet
-            {% endif %}
-          </strong>
-          <p class="section-note">
-            {% if backup_file_exists %}
-              Last mirrored backup timestamp from the backup file itself.
-            {% else %}
-              The restore action will become available after the first backup is created.
-            {% endif %}
-          </p>
-        </div>
-      </div>
-      <div class="settings-single-field">
-        <label for="backup_folder_path">Backup folder</label>
-        <input
-          type="text"
-          id="backup_folder_path"
-          name="backup_folder_path"
-          value="{{ backup_folder_path or '' }}"
-          placeholder="C:\\Users\\YourName\\Documents\\Treasurer Backups"
-        >
-        <div class="settings-inline-actions">
-          <button
-            type="button"
-            class="button settings-helper-button"
-            data-fill-input="backup_folder_path"
-            data-fill-value="{{ suggested_backup_folder_path }}"
+        <div class="settings-single-field">
+          <label for="lodge_display_name">Display name</label>
+          <input
+            type="text"
+            id="lodge_display_name"
+            name="lodge_display_name"
+            value="{{ lodge_display_name }}"
+            placeholder="{{ default_lodge_display_name }}"
+            autocomplete="organization"
           >
-            Use suggested folder
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="panel-heading">
+          <div>
+            <h3>Meeting Schedule</h3>
+            <p class="section-note">Set the year’s meeting dates, names, and types first, because the cash page and deposits key off these blocks.</p>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="settings-table compact-ledger">
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Date</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for meeting in meeting_schedule %}
+                <tr>
+                  <td>{{ meeting.meeting_key }}</td>
+                  <td>
+                    <input type="date" name="{{ meeting.meeting_key }}_date" value="{{ meeting.meeting_date or '' }}">
+                  </td>
+                  <td>
+                    <input type="text" name="{{ meeting.meeting_key }}_name" value="{{ meeting.meeting_name }}">
+                  </td>
+                  <td>
+                    <select name="{{ meeting.meeting_key }}_type">
+                      <option value="Regular" {% if meeting.meeting_type == 'Regular' %}selected{% endif %}>Regular</option>
+                      <option value="Installation" {% if meeting.meeting_type == 'Installation' %}selected{% endif %}>Installation</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input type="text" name="{{ meeting.meeting_key }}_notes" value="{{ meeting.notes or '' }}">
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="panel-heading">
+          <div>
+            <h3>Virtual Account Mapping</h3>
+            <p class="section-note">Choose which internal account each bank category feeds into on the balance sheet. Leaving a row on Main keeps it in the lodge account.</p>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="settings-table compact-ledger">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Virtual Account</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for mapping in category_account_mappings %}
+                <tr>
+                  <td>{{ mapping.ledger_category_name }}</td>
+                  <td>
+                    <select name="category_{{ mapping.ledger_category_id }}_virtual_account">
+                      {% for account in virtual_accounts %}
+                        <option value="{{ account.code }}" {% if account.code == mapping.virtual_account_code %}selected{% endif %}>
+                          {{ account.display_name }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="panel-heading">
+          <div>
+            <h3>Virtual Account Opening Balances</h3>
+            <p class="section-note">These balances carry into the new year on 1 August and feed the balance sheet section of the statement.</p>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="settings-table compact-ledger">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Opening Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for account in virtual_accounts %}
+                <tr>
+                  <td>{{ account.display_name }}</td>
+                  <td>
+                    <input type="number" step="0.01" name="{{ account.code }}_opening_balance" value="{{ '%.2f'|format(account.opening_balance) }}">
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="panel-heading">
+          <div>
+            <h3>Database Backup</h3>
+            <p class="section-note">{{ backup_selection_message }}</p>
+          </div>
+        </div>
+        <div class="backup-status-grid settings-backup-grid">
+          <div class="backup-status-card">
+            <span>Backup folder (actual path on disk)</span>
+            <strong class="settings-backup-path">{{ backup_folder_effective }}</strong>
+            <p class="section-note">
+              {% if backup_folder_selected %}
+                Your Settings value may be a short or relative path; this is where the app writes the mirror.
+              {% else %}
+                Automatic location (Documents or OneDrive, unless overridden by environment).
+              {% endif %}
+            </p>
+            <p class="settings-backup-open-wrap">
+              <a class="button settings-helper-button" href="{{ url_for('main.open_backup_folder') }}">Open this folder</a>
+            </p>
+          </div>
+          <div class="backup-status-card">
+            <span>Backup file</span>
+            <strong class="settings-backup-path">{{ backup_file_effective }}</strong>
+            <p class="section-note">
+              {% if backup_file_exists %}
+                The mirrored file exists and can be restored from here.
+              {% else %}
+                No mirrored backup file has been created yet.
+              {% endif %}
+            </p>
+          </div>
+          <div class="backup-status-card">
+            <span>Last backup</span>
+            <strong>
+              {% if backup_last_backed_up %}
+                {{ backup_last_backed_up.strftime('%Y-%m-%d %H:%M') }}
+              {% else %}
+                No backup yet
+              {% endif %}
+            </strong>
+            <p class="section-note">
+              {% if backup_file_exists %}
+                Last mirrored backup timestamp from the backup file itself.
+              {% else %}
+                The restore action will become available after the first backup is created.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+        <div class="settings-single-field">
+          <label for="backup_folder_path">Backup folder</label>
+          <input
+            type="text"
+            id="backup_folder_path"
+            name="backup_folder_path"
+            value="{{ backup_folder_input_value }}"
+            placeholder="C:\\Users\\YourName\\Documents\\Treasurer Backups"
+          >
+          <div class="settings-inline-actions">
+            <button
+              type="button"
+              class="button settings-helper-button"
+              data-fill-input="backup_folder_path"
+              data-fill-value="{{ suggested_backup_folder_path }}"
+            >
+              Use suggested folder
+            </button>
+            <span class="section-note">Suggested: {{ suggested_backup_folder_path }}</span>
+          </div>
+        </div>
+
+        <div class="settings-actions settings-backup-actions">
+          <button
+            class="button button-primary"
+            type="submit"
+            formaction="{{ url_for('main.run_backup_now') }}"
+            formmethod="post"
+            formnovalidate
+          >
+            Back up now
           </button>
-          <span class="section-note">Suggested: {{ suggested_backup_folder_path }}</span>
+          <button
+            class="button"
+            type="submit"
+            formaction="{{ url_for('main.restore_backup') }}"
+            formmethod="post"
+            formnovalidate
+            onclick="return confirm('This will replace the local database with the mirrored backup. Continue?');"
+            {% if not backup_file_exists %}disabled{% endif %}
+          >
+            Restore local DB from backup
+          </button>
         </div>
-      </div>
-
-      <div class="settings-divider"></div>
-
-      <div class="settings-actions settings-backup-actions">
-        <button
-          class="button button-primary"
-          type="submit"
-          formaction="{{ url_for('main.restore_backup') }}"
-          formmethod="post"
-          formnovalidate
-          onclick="return confirm('This will replace the local database with the mirrored backup. Continue?');"
-          {% if not backup_file_exists %}disabled{% endif %}
-        >
-          Restore local DB from backup
-        </button>
-      </div>
-
-      <div class="settings-divider"></div>
-
-      <div class="panel-heading">
-        <div>
-          <h3>Virtual Account Opening Balances</h3>
-          <p class="section-note">These balances carry into the new year on 1 August and feed the balance sheet section of the statement.</p>
-        </div>
-      </div>
-      <div class="table-scroll">
-        <table class="settings-table compact-ledger">
-          <thead>
-            <tr>
-              <th>Account</th>
-              <th>Opening Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for account in virtual_accounts %}
-              <tr>
-                <td>{{ account.display_name }}</td>
-                <td>
-                  <input type="number" step="0.01" name="{{ account.code }}_opening_balance" value="{{ '%.2f'|format(account.opening_balance) }}">
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="settings-divider"></div>
-
-      <div class="panel-heading">
-        <div>
-          <h3>Virtual Account Mapping</h3>
-          <p class="section-note">Choose which internal account each bank category feeds into on the balance sheet. Leaving a row on Main keeps it in the lodge account.</p>
-        </div>
-      </div>
-      <div class="table-scroll">
-        <table class="settings-table compact-ledger">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th>Virtual Account</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for mapping in category_account_mappings %}
-              <tr>
-                <td>{{ mapping.ledger_category_name }}</td>
-                <td>
-                  <select name="category_{{ mapping.ledger_category_id }}_virtual_account">
-                    {% for account in virtual_accounts %}
-                      <option value="{{ account.code }}" {% if account.code == mapping.virtual_account_code %}selected{% endif %}>
-                        {{ account.display_name }}
-                      </option>
-                    {% endfor %}
-                  </select>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="settings-divider"></div>
-
-      <div class="table-scroll">
-        <table class="settings-table compact-ledger">
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Date</th>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for meeting in meeting_schedule %}
-              <tr>
-                <td>{{ meeting.meeting_key }}</td>
-                <td>
-                  <input type="date" name="{{ meeting.meeting_key }}_date" value="{{ meeting.meeting_date or '' }}">
-                </td>
-                <td>
-                  <input type="text" name="{{ meeting.meeting_key }}_name" value="{{ meeting.meeting_name }}">
-                </td>
-                <td>
-                  <select name="{{ meeting.meeting_key }}_type">
-                    <option value="Regular" {% if meeting.meeting_type == 'Regular' %}selected{% endif %}>Regular</option>
-                    <option value="Installation" {% if meeting.meeting_type == 'Installation' %}selected{% endif %}>Installation</option>
-                  </select>
-                </td>
-                <td>
-                  <input type="text" name="{{ meeting.meeting_key }}_notes" value="{{ meeting.notes or '' }}">
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+        <p class="section-note">“Back up now” uses the resolved path in <strong>Backup folder (actual path on disk)</strong> above. If you changed the text field, click <strong>Save Settings</strong> first. Use <strong>Open this folder</strong> if Explorer does not match what you expected.</p>
+      </section>
 
       <div class="settings-actions">
         <button class="button button-primary" type="submit">Save Settings</button>

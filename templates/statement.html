@@ -2,10 +2,22 @@
 
 {% block title %}Statement | Treasurer Portal{% endblock %}
 
+{% block extra_head %}
+  <style>
+    /* Landscape when printing this page only (loads after site.css so @page wins over global portrait). */
+    @media print {
+      @page {
+        size: A4 landscape;
+        margin: 10mm;
+      }
+    }
+  </style>
+{% endblock %}
+
 {% block content %}
   <section class="statement-header-card">
     <div class="statement-header-copy">
-      <p class="statement-header-crest">Stanford-le-Hope Lodge No. 5217</p>
+      <p class="statement-header-crest">{{ statement_lodge_name }}</p>
       <h2>Statement of Accounts for the Year {{ statement_year_label }}</h2>
     </div>
     <div class="statement-header-actions no-print">
@@ -14,13 +26,40 @@
     </div>
   </section>
 
+  <section class="stats-grid statement-headline-stats">
+    <article class="stat-card">
+      <span>Total income (lodge accounts)</span>
+      <strong>&pound;{{ "%.2f"|format(income_total) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Total expenditure (lodge accounts)</span>
+      <strong>&pound;{{ "%.2f"|format(expense_total) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Surplus / deficit (lodge)</span>
+      <strong>&pound;{{ "%.2f"|format(net_result) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>L.O.I. net (separate fund)</span>
+      <strong>&pound;{{ "%.2f"|format(loi_net_result) }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Closing bank balance</span>
+      <strong>{% if latest_bank_balance is not none %}&pound;{{ "%.2f"|format(latest_bank_balance) }}{% else %}-{% endif %}</strong>
+    </article>
+  </section>
+  <p class="section-note statement-headline-stats-note">
+    The first three figures match the Auditors pack (General Fund, Charity, and Benevolent only).
+    The <strong>Lodge of Instruction</strong> block below is informational: collections through the shared bank account, not part of the lodge’s formal return to Grand Lodge, and excluded from lodge surplus.
+    Headline totals are not the sum of the Balance Sheet “In” and “Out” columns, which are split across virtual sub-accounts.
+  </p>
+
   <section class="statement-sheet-grid">
     {% for section in statement_sections %}
       <section class="panel statement-panel">
         <div class="panel-heading">
           <div>
             <h3>{{ section.title }}</h3>
-            <p class="section-note">Calculated from the imported bank ledger and cashbook using the workbook statement layout.</p>
           </div>
         </div>
 
@@ -65,34 +104,33 @@
     {% endfor %}
   </section>
 
-  <section class="panel statement-panel">
+  <section class="panel statement-panel statement-balance-block">
     <div class="panel-heading">
       <div>
         <h3>Balance Sheet</h3>
-        <p class="section-note">Virtual lodge accounts with opening balances from Settings and movement driven from the ledger.</p>
       </div>
     </div>
 
     <div class="table-scroll">
-      <table class="statement-table compact-ledger">
+      <table class="statement-table statement-balance-sheet compact-ledger">
         <colgroup>
-          <col class="statement-account-col">
-          <col class="statement-money-col">
-          <col class="statement-money-col">
-          <col class="statement-money-col">
-          <col class="statement-money-col">
-          <col class="statement-money-col">
-          <col class="statement-money-col">
+          <col class="statement-balance-account-col">
+          <col class="statement-balance-money-col">
+          <col class="statement-balance-money-col">
+          <col class="statement-balance-money-col">
+          <col class="statement-balance-money-col">
+          <col class="statement-balance-money-col">
+          <col class="statement-balance-money-col">
         </colgroup>
         <thead>
           <tr>
-            <th>Account</th>
-            <th>Opening</th>
-            <th>In</th>
-            <th>Out</th>
-            <th>Xfr In</th>
-            <th>Xfr Out</th>
-            <th>Closing</th>
+            <th scope="col">Account</th>
+            <th scope="col" class="money-cell">Opening</th>
+            <th scope="col" class="money-cell">In</th>
+            <th scope="col" class="money-cell">Out</th>
+            <th scope="col" class="money-cell">Xfr In</th>
+            <th scope="col" class="money-cell">Xfr Out</th>
+            <th scope="col" class="money-cell">Closing</th>
           </tr>
         </thead>
         <tbody>

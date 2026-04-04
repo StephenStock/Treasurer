@@ -1,12 +1,27 @@
+import platform
 import sqlite3
+import tempfile
 import unittest
+from io import BytesIO, StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from flask import Flask
-from werkzeug.datastructures import MultiDict
+from werkzeug.datastructures import FileStorage, MultiDict
 
-from treasurer_app.db import DatabaseHandle, init_db
+from treasurer_app.db import (
+    APP_SETTING_LODGE_DISPLAY_NAME,
+    MAX_BANK_STATEMENT_FILE_BYTES,
+    DatabaseHandle,
+    _bank_transaction_import_fingerprint,
+    _import_bank_statement_csv_handle,
+    ensure_financial_tables,
+    import_bank_statement_uploads,
+    init_db,
+    recompute_bank_running_balances,
+    remove_legacy_visitor_member,
+    set_app_setting,
+)
 from treasurer_app.routes import main_bp
 
 
@@ -38,6 +53,7 @@ class BankPageTestCase(unittest.TestCase):
         self.patcher_routes_db.start()
 
         init_db()
+        ensure_financial_tables(self.db)
         self.client = self.app.test_client()
 
     def tearDown(self) -> None:
@@ -77,6 +93,15 @@ class BankPageTestCase(unittest.TestCase):
     def _insert_bank_transaction(self, *, details: str, money_in: float, money_out: float = 0.0) -> int:
         db = self._db()
         reporting_period_id = self._current_reporting_period_id()
+        tx_type = "Inward Payment" if money_in > 0 else "Outward Payment"
+        fp = _bank_transaction_import_fingerprint(
+            reporting_period_id,
+            "2026-03-29",
+            details,
+            tx_type,
+            money_in,
+            money_out,
+        )
         row = db.execute(
             """
             INSERT INTO bank_transactions (
@@ -91,16 +116,17 @@ class BankPageTestCase(unittest.TestCase):
                 source_workbook,
                 source_sheet,
                 source_row_number,
-                notes
+                notes,
+                import_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
             (
                 reporting_period_id,
                 "2026-03-29",
                 details,
-                "Inward Payment" if money_in > 0 else "Outward Payment",
+                tx_type,
                 money_in,
                 money_out,
                 1000.0,
@@ -109,6 +135,7 @@ class BankPageTestCase(unittest.TestCase):
                 "CSV",
                 9001,
                 "test row",
+                fp,
             ),
         ).fetchone()
         db.commit()
@@ -318,6 +345,260 @@ class BankPageTestCase(unittest.TestCase):
             0,
         )
 
+    def test_bank_csv_reimport_dedupes_when_details_whitespace_differs(self) -> None:
+        rid = self._current_reporting_period_id()
+        count = lambda: self._db().execute("SELECT COUNT(*) AS c FROM bank_transactions").fetchone()["c"]
+        before = count()
+        csv_a = (
+            "Date,Details,Transaction Type,In,Out,Balance\n"
+            "01/03/2026,ACME  PAYMENT,FPI,100.00,,500.00\n"
+        )
+        _import_bank_statement_csv_handle(self.connection, rid, StringIO(csv_a), "March.csv")
+        after_first = count()
+
+        csv_b = (
+            "Date,Details,Transaction Type,In,Out,Balance\n"
+            "01/03/2026,ACME    PAYMENT,FPI,100.00,,500.00\n"
+        )
+        _import_bank_statement_csv_handle(self.connection, rid, StringIO(csv_b), "March_copy.csv")
+        after_second = count()
+
+        self.assertEqual(after_first, after_second, "re-import must update the same row, not insert a duplicate")
+        self.assertGreaterEqual(after_first, before)
+
+    def test_bank_csv_merges_legacy_placeholder_details_with_empty_csv_cell(self) -> None:
+        rid = self._current_reporting_period_id()
+        count = lambda: self._db().execute("SELECT COUNT(*) AS c FROM bank_transactions").fetchone()["c"]
+        legacy_date_iso = "2099-06-15"
+        legacy_fp = _bank_transaction_import_fingerprint(
+            rid,
+            legacy_date_iso,
+            "Imported transaction",
+            "Account Maintenance Fee",
+            0.0,
+            7.77,
+        )
+        self._db().execute(
+            """
+            INSERT INTO bank_transactions (
+                reporting_period_id,
+                transaction_date,
+                details,
+                transaction_type,
+                money_in,
+                money_out,
+                running_balance,
+                is_opening_balance,
+                source_workbook,
+                source_sheet,
+                source_row_number,
+                import_fingerprint
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'legacy.xlsx', 'Bank', 99, ?)
+            """,
+            (
+                rid,
+                legacy_date_iso,
+                "Imported transaction",
+                "Account Maintenance Fee",
+                0.0,
+                7.77,
+                1000.0,
+                legacy_fp,
+            ),
+        )
+        before = count()
+        csv_row = (
+            "Date,Details,Transaction Type,In,Out,Balance\n"
+            "15/06/2099,,Account Maintenance Fee,,7.77,1000.00\n"
+        )
+        _import_bank_statement_csv_handle(self.connection, rid, StringIO(csv_row), "stmt.csv")
+        self.assertEqual(count(), before)
+
+        row = self._db().execute(
+            """
+            SELECT details, source_workbook, source_sheet
+            FROM bank_transactions
+            WHERE transaction_date = ? AND ROUND(money_out, 2) = 7.77
+            """,
+            (legacy_date_iso,),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["details"], "")
+        self.assertEqual(row["source_workbook"], "stmt.csv")
+        self.assertEqual(row["source_sheet"], "CSV")
+
+    def test_bank_running_balances_use_statement_line_order_not_row_id(self) -> None:
+        """CSV is newest-first: lower source_row = newer line; recompute walks oldest-first."""
+        rid = self._current_reporting_period_id()
+        db = self._db()
+        opening_fp = "test-opening-balance-fp-unique-001"
+        loi_fp = "test-loi-fp-unique-002"
+        chq_fp = "test-chq-fp-unique-003"
+        db.execute(
+            """
+            INSERT INTO bank_transactions (
+                reporting_period_id, transaction_date, details, transaction_type,
+                money_in, money_out, running_balance, is_opening_balance,
+                source_workbook, source_sheet, source_row_number, import_fingerprint
+            )
+            VALUES (?, '2026-04-01', 'Opening Balance', NULL, 0, 0, 1000.0, 1,
+                    'seed', 'Bank', 1, ?)
+            """,
+            (rid, opening_fp),
+        )
+        db.execute(
+            """
+            INSERT INTO bank_transactions (
+                reporting_period_id, transaction_date, details, transaction_type,
+                money_in, money_out, running_balance, is_opening_balance,
+                source_workbook, source_sheet, source_row_number, import_fingerprint
+            )
+            VALUES (?, '2026-04-02', 'LOI payment', 'Inward Payment', 10.17, 0, 999.0, 0,
+                    'stmt.csv', 'CSV', 10, ?)
+            """,
+            (rid, loi_fp),
+        )
+        db.execute(
+            """
+            INSERT INTO bank_transactions (
+                reporting_period_id, transaction_date, details, transaction_type,
+                money_in, money_out, running_balance, is_opening_balance,
+                source_workbook, source_sheet, source_row_number, import_fingerprint
+            )
+            VALUES (?, '2026-04-02', 'Cheque 800037', 'Cheque', 0, 127.0, 888.0, 0,
+                    'stmt.csv', 'CSV', 11, ?)
+            """,
+            (rid, chq_fp),
+        )
+        db.commit()
+
+        recompute_bank_running_balances(db, rid)
+        db.commit()
+
+        loi_row = db.execute(
+            "SELECT running_balance FROM bank_transactions WHERE import_fingerprint = ?",
+            (loi_fp,),
+        ).fetchone()
+        chq_row = db.execute(
+            "SELECT running_balance FROM bank_transactions WHERE import_fingerprint = ?",
+            (chq_fp,),
+        ).fetchone()
+        self.assertIsNotNone(loi_row)
+        self.assertIsNotNone(chq_row)
+        self.assertEqual(float(chq_row["running_balance"]), 873.0)
+        self.assertEqual(float(loi_row["running_balance"]), 883.17)
+
+    def test_bank_csv_reimport_dedupes_when_balance_column_changes(self) -> None:
+        rid = self._current_reporting_period_id()
+        count = lambda: self._db().execute("SELECT COUNT(*) AS c FROM bank_transactions").fetchone()["c"]
+        before = count()
+        csv_with_balance = (
+            "Date,Details,Transaction Type,In,Out,Balance\n"
+            "02/03/2026,CAFE LTD,DEB,,15.50,884.25\n"
+        )
+        _import_bank_statement_csv_handle(self.connection, rid, StringIO(csv_with_balance), "stmt1.csv")
+        after_first = count()
+
+        csv_no_balance = (
+            "Date,Details,Transaction Type,In,Out,Balance\n"
+            "02/03/2026,CAFE LTD,DEB,,15.50,\n"
+        )
+        _import_bank_statement_csv_handle(self.connection, rid, StringIO(csv_no_balance), "stmt2.csv")
+        after_second = count()
+
+        self.assertEqual(after_first, after_second, "re-import without balance must update, not duplicate")
+        self.assertGreaterEqual(after_first, before)
+
+    def test_bank_import_does_not_backfill_allocations_from_workbook(self) -> None:
+        with (
+            patch(
+                "treasurer_app.routes.import_bank_statement_uploads",
+                return_value={"files": 1, "inserted": 1, "updated": 0, "errors": []},
+            ) as import_uploads,
+            patch("treasurer_app.routes.backfill_bank_allocations_from_workbook") as backfill,
+        ):
+            response = self.client.post(
+                "/bank/import",
+                data={
+                    "statement_files": (
+                        BytesIO(b"Date,Details,In,Out,Balance\n"),
+                        "statement.csv",
+                    )
+                },
+                headers={"X-Requested-With": "XMLHttpRequest"},
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 302)
+        import_uploads.assert_called_once()
+        backfill.assert_not_called()
+
+    def test_statement_shows_lodge_name_from_settings(self) -> None:
+        set_app_setting(self.db, APP_SETTING_LODGE_DISPLAY_NAME, "Test Lodge Alpha")
+        rv = self.client.get("/statement")
+        self.assertEqual(rv.status_code, 200)
+        self.assertIn(b"Test Lodge Alpha", rv.data)
+        self.assertNotIn(b"Stanford-le-Hope Lodge No. 5217", rv.data)
+
+    def test_bank_upload_non_utf8_reports_error(self) -> None:
+        rid = self._current_reporting_period_id()
+        fs = FileStorage(stream=BytesIO(b"\xff\x00\x80 not valid utf-8"), filename="bad.csv", content_type="text/csv")
+        totals = import_bank_statement_uploads(self.db, rid, [fs])
+        self.assertEqual(totals["files"], 0)
+        self.assertTrue(totals["errors"])
+        self.assertTrue(any("UTF-8" in e for e in totals["errors"]))
+
+    def test_bank_upload_rejects_oversized_file(self) -> None:
+        rid = self._current_reporting_period_id()
+        raw = b"x" * (MAX_BANK_STATEMENT_FILE_BYTES + 1)
+        fs = FileStorage(stream=BytesIO(raw), filename="huge.csv", content_type="text/csv")
+        totals = import_bank_statement_uploads(self.db, rid, [fs])
+        self.assertEqual(totals["files"], 0)
+        self.assertTrue(any("MB" in e for e in totals["errors"]))
+
+    def test_member_dues_post_updates_amounts(self) -> None:
+        row = self._db().execute("SELECT id FROM members ORDER BY id LIMIT 1").fetchone()
+        self.assertIsNotNone(row)
+        member_id = row["id"]
+        response = self.client.post(
+            f"/members/{member_id}/dues",
+            data={"subscription_due": "333.5", "dining_due": "111.25"},
+        )
+        self.assertEqual(response.status_code, 302)
+        dues = self._db().execute(
+            """
+            SELECT subscription_due, dining_due
+            FROM dues
+            WHERE member_id = ? AND reporting_period_id = ?
+            """,
+            (member_id, self._current_reporting_period_id()),
+        ).fetchone()
+        self.assertIsNotNone(dues)
+        self.assertEqual(float(dues["subscription_due"]), 333.5)
+        self.assertEqual(float(dues["dining_due"]), 111.25)
+
+    def test_backup_run_writes_mirrored_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            backup_path = Path(td) / "Treasurer.backup.db"
+            self.app.config["BACKUP_DATABASE"] = str(backup_path)
+            response = self.client.post("/backup/run")
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.headers.get("Location"), "/settings")
+            self.assertTrue(backup_path.is_file())
+
+    def test_open_backup_folder_redirects_and_launches_file_manager(self) -> None:
+        opener = {"Windows": "explorer", "Darwin": "open"}.get(platform.system(), "xdg-open")
+        with patch("treasurer_app.routes.subprocess.Popen") as popen:
+            response = self.client.get("/backup/open-folder", headers={"Referer": "/settings"})
+            self.assertEqual(response.status_code, 302)
+            launches = [
+                c
+                for c in popen.call_args_list
+                if c.args and isinstance(c.args[0], list) and c.args[0][:1] == [opener]
+            ]
+            self.assertEqual(len(launches), 1)
+
     def test_settings_can_update_virtual_account_mapping(self) -> None:
         sumup_category_id = self._category_id("SUMUP")
         charity_account_id = self._virtual_account_id("CHARITY")
@@ -371,6 +652,42 @@ class BankPageTestCase(unittest.TestCase):
         }
         self.assertEqual(mappings["SUBS"], "MAIN")
         self.assertEqual(mappings["DINING"], "MAIN")
+
+    def test_legacy_visitor_member_is_removed_from_existing_data(self) -> None:
+        db = self._db()
+        visitor_type_id = db.execute(
+            "SELECT id FROM member_types WHERE code = ?",
+            ("VISITOR",),
+        ).fetchone()["id"]
+        member_id = db.execute(
+            """
+            INSERT INTO members (
+                membership_number, full_name, member_type_id, email, phone, status, notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("M999", "*Visitor", visitor_type_id, None, None, "visitor", ""),
+        ).lastrowid
+        db.execute(
+            """
+            INSERT INTO dues (
+                member_id, reporting_period_id, year,
+                subscription_due, subscription_paid, dining_due, dining_paid, status, notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (member_id, self._current_reporting_period_id(), 2026, 0.0, 0.0, 0.0, 0.0, "unpaid", ""),
+        )
+
+        removed = remove_legacy_visitor_member(db)
+
+        self.assertEqual(removed, 1)
+        self.assertIsNone(
+            db.execute("SELECT 1 FROM members WHERE full_name = ?", ("*Visitor",)).fetchone()
+        )
+        self.assertIsNone(
+            db.execute("SELECT 1 FROM dues WHERE member_id = ?", (member_id,)).fetchone()
+        )
 
 
 if __name__ == "__main__":

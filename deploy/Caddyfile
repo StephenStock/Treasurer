@@ -1,0 +1,9 @@
+# SITE_ADDRESS is substituted by Caddy from the environment (set in docker-compose).
+# Examples:
+#   SITE_ADDRESS=:80
+#   SITE_ADDRESS=treasurer.example.com   (Caddy obtains HTTPS certificates automatically)
+
+{$SITE_ADDRESS} {
+    encode gzip zstd
+    reverse_proxy app:8000
+}

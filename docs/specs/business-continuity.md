@@ -14,17 +14,15 @@ Current preferred direction:
 - spreadsheet export as a first-class fallback
 - no mandatory external hosting or public web dependency
 
-The previous deployment model has been valuable as a learning exercise and as a proof that the app can run in production-style infrastructure. It is no longer the preferred operating model for the product itself.
-
 ## Problem
 
-The system must remain usable by the lodge or chapter even if the current technical maintainer becomes unavailable, hosting payments stop, or the app can no longer be actively developed.
+The system must remain usable by the lodge or chapter even if the current technical maintainer becomes unavailable, the laptop is lost, or the app can no longer be actively developed.
 
 The risk is not only software failure. The larger risk is operational fragility:
 
 - one person understands the system deeply
-- hosting, deploy, and recovery depend on technical knowledge
-- successors are more likely to understand a spreadsheet than a hosted web app
+- backup and recovery depend on documented habits and a little technical knowledge
+- successors are more likely to understand a spreadsheet than a bespoke application
 - external dependencies such as domains and credentials can break continuity even if the code is stable
 
 Business continuity must therefore be treated as a primary design goal, not as a later hardening task.
@@ -33,7 +31,7 @@ Business continuity must therefore be treated as a primary design goal, not as a
 
 The app must never become the only form in which the lodge's working financial knowledge can survive.
 
-If the hosted system disappears, the treasurer must be able to continue the core workflow using exported spreadsheet-friendly data and documented plain-English procedures.
+If the app or device is unavailable, the treasurer must be able to continue the core workflow using exported spreadsheet-friendly data and documented plain-English procedures.
 
 ## Scope
 
@@ -41,7 +39,7 @@ This spec covers:
 
 - continuity planning for treasury operations
 - exportability of operational data into spreadsheet-usable form
-- fallback from hosted app to spreadsheet workflow
+- fallback from the app to spreadsheet workflow
 - backup and restore expectations
 - reduction of technical dependency on one maintainer
 - decisions about which features should remain in the app and which should stay in external tools
@@ -79,7 +77,7 @@ Primary users under this continuity model:
 - Ensure the treasurer's records can be handed over without requiring software expertise
 - Make the app optional rather than existential to the process
 - Preserve data and business rules in forms that are understandable outside the codebase
-- Reduce the blast radius of hosting, credential, or maintainer failure
+- Reduce the blast radius of device loss, backup gaps, or maintainer unavailability
 - Favor boring, stable, documented workflows over ambitious platform growth
 
 ## Non-goals
@@ -131,21 +129,20 @@ That includes:
 
 The documentation must be good enough that a careful successor can understand the workflow even if they cannot read Python.
 
-### 3. Hosting dependency must not destroy continuity
+### 3. No dependency on hosted infrastructure for normal use
 
-If hosting stops because of payment failure, access loss, or deliberate shutdown, the treasury workflow must still be recoverable.
+If the laptop fails, is stolen, or the app stops working, the treasury workflow must still be recoverable.
 
 The continuity plan should assume:
 
-- a hosted copy may disappear suddenly
-- the database may need to be restored elsewhere
+- the primary copy of data is local SQLite plus your backup discipline
+- restores happen on a replacement machine from backup files or exports
 - the fallback may be spreadsheet-first rather than app-first
 
 Preferred mitigation:
 
-- do not require hosting for normal use
-- make the normal operating model local-first
-- treat any non-local deployment as optional or temporary
+- normal use is local-first on one machine
+- regular backups and exports are part of the monthly habit
 
 Minimum requirements:
 
@@ -169,7 +166,7 @@ Examples:
 - a custodian should know where backups live
 - a custodian should know what bills or renewals exist
 - a custodian should know how to find the runbook and continuity guide
-- an operator should not need to know how to deploy code
+- an operator should not need to know how to build or deploy the application
 
 ### 5. Feature choice must be filtered through continuity risk
 
@@ -178,7 +175,7 @@ New features should be accepted only if they improve the treasurer workflow with
 Features should be rejected, deferred, or kept in external services when they:
 
 - duplicate supported third-party systems unnecessarily
-- create new hosting or security obligations
+- create unnecessary security or operational obligations
 - make the system harder to hand over
 - depend on specialized technical knowledge to keep working
 
@@ -227,9 +224,9 @@ This spec will be considered meaningfully addressed when:
 - the preferred operating model is local-first rather than hosted-first
 - the project can produce an export pack sufficient for spreadsheet fallback
 - the app's critical workflows are documented in plain English
-- hosting, backup, and restore dependencies are documented
+- backup and restore expectations are documented
 - product scope decisions explicitly favor lower continuity risk
-- it is possible to explain how the lodge would continue if the hosted app vanished
+- it is possible to explain how the lodge would continue if the app or laptop were unavailable
 
 ## Immediate follow-on work
 
@@ -250,4 +247,4 @@ The likely implementation work after agreeing this spec is:
 - Should export generation be manual, scheduled, or part of month-end workflow?
 - Which current features are genuinely treasury-essential, and which are convenience features?
 - Should the project formally drop member-facing and multi-role ambitions now, or only defer them?
-- Should any non-local recovery/demo environment exist at all, or should the project stay purely local?
+- Should any separate demo or training copy exist, or is one local install enough?

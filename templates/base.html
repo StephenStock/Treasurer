@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#12151c">
   <title>{% block title %}Treasurer Portal{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
   {% block extra_head %}{% endblock %}
@@ -27,7 +29,7 @@
               type="button"
               aria-expanded="{% if active_page == 'balances' %}true{% else %}false{% endif %}"
             >
-              Reports
+              Sub Accounts
             </button>
             <a class="nav-link {% if active_page == 'auditors' %}is-active{% endif %}" href="{{ url_for('main.auditors') }}">Auditors</a>
             <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
@@ -43,7 +45,7 @@
           </div>
         </nav>
       </div>
-      <div class="report-nav-row" aria-label="Reports">
+      <div class="report-nav-row" aria-label="Sub accounts">
         {% for account in balance_nav_accounts %}
           <a class="nav-menu-item {% if active_page == 'balances' and selected_account is defined and selected_account.code == account.code %}is-active{% endif %}" href="{{ url_for('main.balance_sheet', account_code=account.code) }}">{{ account.display_name }}</a>
         {% endfor %}
@@ -52,6 +54,14 @@
   </header>
 
   <main class="page-shell">
+    {% if backup_mirror_error %}
+      <section class="attention-banner attention-banner-error" role="alert">
+        <strong>Backup warning.</strong> {{ backup_mirror_error }}
+        {% if backup_mirror_error_at %}
+          <span class="section-note"> ({{ backup_mirror_error_at }})</span>
+        {% endif %}
+      </section>
+    {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <section class="flash-stack">

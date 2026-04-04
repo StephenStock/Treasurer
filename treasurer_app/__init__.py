@@ -2,8 +2,11 @@ import os
 import threading
 from pathlib import Path
 
-from flask import Flask, current_app, render_template, request
+from flask import Flask, current_app, flash, redirect, render_template, request, url_for
+from werkzeug.exceptions import RequestEntityTooLarge
 
+from .backup_mirror_health import clear_failure as _clear_backup_mirror_failure
+from .backup_mirror_health import record_failure as _record_backup_mirror_failure
 from .db import (
     APP_RUNTIME_LOCK_HEARTBEAT_SECONDS,
     APP_RUNTIME_LOCK_NAME,
@@ -29,9 +32,13 @@ from .db import (
     seed_virtual_account_transfers_from_workbook,
     sync_database_files,
     consolidate_virtual_accounts,
+    remove_legacy_visitor_member,
     table_exists,
 )
 from .routes import main_bp
+
+# Whole POST body limit for bank CSV uploads (multipart total).
+MAX_BANK_IMPORT_REQUEST_BYTES = 12 * 1024 * 1024
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -43,10 +50,11 @@ def create_app(test_config: dict | None = None) -> Flask:
         static_folder=str(project_root / "static"),
     )
     app.config.from_mapping(
-        SECRET_KEY="change-me",
+        SECRET_KEY=os.environ.get("SECRET_KEY", "change-me"),
         DATABASE=str(default_database_path()),
         BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", "")),
         RUNTIME_LOCK_ENABLED=os.environ.get("TREASURER_RUNTIME_LOCK", "").strip().lower() in {"1", "true", "yes", "on"},
+        MAX_CONTENT_LENGTH=MAX_BANK_IMPORT_REQUEST_BYTES,
     )
 
     runtime_identity = runtime_lock_identity()
@@ -66,6 +74,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     if test_config is not None:
         app.config.update(test_config)
 
+    app.config.setdefault("BACKUP_LAST_ERROR", None)
+    app.config.setdefault("BACKUP_LAST_ERROR_AT", None)
+
     database_path = Path(app.config["DATABASE"])
     backup_database_path = resolve_backup_database_path(database_path)
     app.config["BACKUP_DATABASE"] = str(backup_database_path)
@@ -77,8 +88,8 @@ def create_app(test_config: dict | None = None) -> Flask:
                 sync_database_files(database_path, backup_database_path)
         elif backup_database_path.exists():
             restore_database_from_backup(database_path, backup_database_path)
-    except Exception:
-        pass
+    except Exception as exc:
+        _record_backup_mirror_failure(app, exc, detail="Startup database sync with backup failed.")
     init_app(app)
     app.teardown_appcontext(close_db)
 
@@ -88,6 +99,8 @@ def create_app(test_config: dict | None = None) -> Flask:
             return None
 
         if request.endpoint == "static":
+            return None
+        if (request.path or "") == "/healthz":
             return None
 
         db = get_db()
@@ -148,11 +161,28 @@ def create_app(test_config: dict | None = None) -> Flask:
         if request.method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400:
             try:
                 db = get_db()
-                backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(Path(current_app.config["DATABASE"])))
-                backup_database(db, backup_path)
-            except Exception:
-                pass
+                primary_path = Path(current_app.config["DATABASE"])
+                backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(primary_path))
+                backup_database(db, backup_path, primary_path=primary_path)
+                _clear_backup_mirror_failure(current_app)
+            except Exception as exc:
+                _record_backup_mirror_failure(
+                    current_app,
+                    exc,
+                    detail="Mirrored backup could not be written after your last save.",
+                )
         return response
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_entity_too_large(_e):
+        flash(
+            f"That upload is too large (about {MAX_BANK_IMPORT_REQUEST_BYTES // (1024 * 1024)} MB max per request). "
+            "The usual cause is a bank CSV import.",
+            "error",
+        )
+        if (request.path or "").startswith("/bank"):
+            return redirect(url_for("main.bank"))
+        return redirect(url_for("main.dashboard"))
 
     app.register_blueprint(main_bp)
 
@@ -165,6 +195,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             seed_ledger_categories(db)
             seed_virtual_accounts(db)
             consolidate_virtual_accounts(db)
+            remove_legacy_visitor_member(db)
             period_count = db.execute("SELECT COUNT(*) AS total FROM reporting_periods").fetchone()["total"]
             current_period = None
             if period_count > 0:
@@ -180,8 +211,9 @@ def create_app(test_config: dict | None = None) -> Flask:
                 seed_virtual_account_transfers_from_workbook(db, reporting_period_id=current_period["id"])
             db.commit()
             try:
-                backup_database(db, Path(app.config["BACKUP_DATABASE"]))
-            except Exception:
-                pass
+                backup_database(db, Path(app.config["BACKUP_DATABASE"]), primary_path=database_path)
+                _clear_backup_mirror_failure(app)
+            except Exception as exc:
+                _record_backup_mirror_failure(app, exc, detail="Initial backup after schema check failed.")
 
     return app
