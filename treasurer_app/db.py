@@ -5,6 +5,7 @@ import difflib
 import hashlib
 import io
 import os
+import posixpath
 import re
 import shutil
 import sqlite3
@@ -1349,14 +1350,37 @@ def _normalize_xlsx_rel_target(target: str | None) -> str | None:
     """Resolve workbook.xml.rels Target to a path inside the xlsx zip.
 
     Targets are usually relative to ``xl/`` (e.g. ``worksheets/sheet1.xml``). Some tools
-    emit ``/xl/...`` or ``xl/...``, which must not be combined with a second ``xl/`` prefix.
+    emit ``/xl/...``, ``xl/...``, or ``../xl/...``; those must not become ``xl//xl/...``.
     """
     if not target:
         return None
-    t = target.strip().replace("\\", "/").lstrip("/")
-    if t.startswith("xl/"):
-        return t
-    return f"xl/{t}"
+    t = target.strip().replace("\\", "/")
+    while "//" in t:
+        t = t.replace("//", "/")
+    t = t.lstrip("/")
+    while t.startswith("xl/xl/"):
+        t = t[3:]
+    if not t.startswith("xl/"):
+        t = f"xl/{t}"
+    t = posixpath.normpath(t).replace("\\", "/")
+    if not t.startswith("xl/"):
+        t = posixpath.normpath(f"xl/{t}").replace("\\", "/")
+    return t
+
+
+def _read_xlsx_zip_part(archive: zipfile.ZipFile, path: str) -> bytes:
+    """Read a part from the xlsx zip; tolerate ``//`` and case-only differences in names."""
+    path = path.replace("//", "/")
+    try:
+        return archive.read(path)
+    except KeyError:
+        pass
+    names = archive.namelist()
+    by_lower = {n.replace("\\", "/").lower(): n for n in names}
+    key = path.lower()
+    if key in by_lower:
+        return archive.read(by_lower[key])
+    raise KeyError(path)
 
 
 def _read_sheet_rows(workbook_path: Path, sheet_name: str) -> list[tuple[int, dict[str, str]]]:
@@ -1366,7 +1390,7 @@ def _read_sheet_rows(workbook_path: Path, sheet_name: str) -> list[tuple[int, di
             return []
 
         shared_strings = _load_shared_strings(archive)
-        sheet_xml = ET.fromstring(archive.read(target))
+        sheet_xml = ET.fromstring(_read_xlsx_zip_part(archive, target))
         sheet_data = sheet_xml.find(f"{{{_MAIN_NS}}}sheetData")
         if sheet_data is None:
             return []
