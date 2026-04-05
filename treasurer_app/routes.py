@@ -2155,7 +2155,7 @@ def settings_portal_users():
             if not email or "@" not in email:
                 flash("Enter a valid email address.", "error")
                 return redirect(url_for("main.settings_portal_users"))
-            min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 10))
+            min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 8))
             if len(password) < min_pw:
                 flash(f"Password must be at least {min_pw} characters.", "error")
                 return redirect(url_for("main.settings_portal_users"))
@@ -2188,7 +2188,7 @@ def settings_portal_users():
             update_user_role(db, user_id, role_id)
             set_user_active(db, user_id, active)
             if new_password:
-                min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 10))
+                min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 8))
                 if len(new_password) < min_pw:
                     flash(f"New password must be at least {min_pw} characters.", "error")
                     return redirect(url_for("main.settings_portal_users"))
@@ -2251,7 +2251,7 @@ def _table_admin_apply_users_password(table: str, form, prefix: str, values: dic
     """Apply optional plain password for `users` rows; mutates `values`."""
     if table != "users":
         return
-    min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 10))
+    min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 8))
     plain = (form.get(f"{prefix}password_plain") or "").strip()
     if plain:
         if len(plain) < min_pw:

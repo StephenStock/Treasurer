@@ -7,7 +7,7 @@
     <div class="panel-heading">
       <div>
         <h3>Portal users</h3>
-        <p class="section-note">Create accounts and assign roles. Passwords must be at least {{ min_password_length }} characters. Disabled users cannot sign in.</p>
+        <p class="section-note">Create accounts and assign roles. Passwords must be at least {{ min_password_length }} characters. “Add user” pre-fills <code>password</code> so it matches the first-time sign-in email; change it here if you use something else. Disabled users cannot sign in.</p>
       </div>
     </div>
 
@@ -22,7 +22,7 @@
           </div>
           <div class="settings-single-field">
             <label for="new_password">Initial password</label>
-            <input type="password" id="new_password" name="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
+            <input type="password" id="new_password" name="password" autocomplete="new-password" minlength="{{ min_password_length }}" value="{{ default_portal_initial_password }}" required>
           </div>
           <div class="settings-single-field">
             <label for="new_role">Role</label>

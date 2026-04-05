@@ -142,7 +142,7 @@ def reset_password():
         token = (request.form.get("token") or "").strip()
         password = request.form.get("password") or ""
         password2 = request.form.get("password_confirm") or ""
-        min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 10))
+        min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 8))
         if len(password) < min_pw:
             flash(f"Password must be at least {min_pw} characters.", "error")
             return render_template("auth/reset_password.html", token=token)

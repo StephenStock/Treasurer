@@ -39,7 +39,7 @@ from .db import (
     table_exists,
 )
 from .login_config import init_login_manager, user_can
-from .password_policy import min_password_length_from_environ
+from .password_policy import default_portal_initial_password, min_password_length_from_environ
 from .routes import main_bp
 
 # Whole POST body limit for bank CSV uploads and Settings database upload (multipart total).
@@ -48,6 +48,15 @@ MAX_BANK_IMPORT_REQUEST_BYTES = 128 * 1024 * 1024
 
 def create_app(test_config: dict | None = None) -> Flask:
     project_root = Path(__file__).resolve().parent.parent
+    # Load repo-root .env into os.environ so local runs (not only Docker) see TREASURER_* vars.
+    # override=False: real environment variables win over the file.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(project_root / ".env", override=False)
+    except ImportError:
+        pass
+
     app = Flask(
         __name__,
         instance_relative_config=True,
@@ -124,9 +133,11 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.context_processor
     def _inject_permission_helpers():
+        min_pw = int(app.config.get("PASSWORD_MIN_LENGTH", 8))
         return {
             "user_can": user_can,
-            "min_password_length": int(app.config.get("PASSWORD_MIN_LENGTH", 10)),
+            "min_password_length": min_pw,
+            "default_portal_initial_password": default_portal_initial_password(min_pw),
         }
 
     @app.before_request
@@ -274,7 +285,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
                 bootstrap_email = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_EMAIL", "").strip()
                 bootstrap_password = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_PASSWORD", "")
-                min_pw = int(app.config.get("PASSWORD_MIN_LENGTH", 10))
+                min_pw = int(app.config.get("PASSWORD_MIN_LENGTH", 8))
                 if bootstrap_email and "@" in bootstrap_email and len(bootstrap_password) >= min_pw and count_users(db) == 0:
                     role_row = db.execute("SELECT id FROM roles WHERE code = 'ADMIN'").fetchone()
                     if role_row and fetch_user_by_email(db, bootstrap_email) is None:
