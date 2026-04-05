@@ -21,7 +21,7 @@ The current preferred operating model is:
 - Operating mode: local Windows laptop, browser pointed at `127.0.0.1`; **sign-in required** for all app pages except static assets and the **`/healthz`** probe
 - Portal accounts: email + password, each user has **one role** (Secretary, Treasurer, Auditor, Admin, Charity Steward, Master). **Role permissions** (Settings → Role permissions) control which **pages and admin actions** each non-admin role may use; the main nav only shows areas the current user may access. Users with the **Admin** role **always** have full access regardless of matrix checkboxes (the Admin column is still useful for reference when tuning other roles)
 - Database: SQLite file on this machine (`Treasurer.db` next to `start.bat` unless overridden in `config.local`)
-- Mirrored backup: folder from Settings (or `TREASURER_BACKUP_DATABASE`), kept in sync after saves and on clean exit
+- Mirrored backup: folder from Settings (or `TREASURER_BACKUP_DATABASE`), kept in sync after successful saves
 - Single active-copy lock: only one running copy should hold the database at a time
 - Mirrored backup folder can also be changed from the app's Settings page and is stored with the database
 - The home page shows a brief backup status line and an `Exit App` button

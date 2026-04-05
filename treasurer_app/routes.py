@@ -3,7 +3,6 @@ import platform
 import sqlite3
 import subprocess
 import tempfile
-import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -75,17 +74,6 @@ main_bp = Blueprint("main", __name__)
 def healthz():
     """Lightweight liveness probe for reverse proxies and deploy scripts (no DB access)."""
     return ("ok", 200, {"Content-Type": "text/plain; charset=utf-8"})
-
-
-def _launcher_exit_signal_path() -> Path:
-    return Path(os.environ.get("TEMP") or tempfile.gettempdir()) / "treasurer.exit"
-
-
-def _signal_launcher_exit() -> None:
-    try:
-        _launcher_exit_signal_path().write_text(datetime.utcnow().isoformat(), encoding="utf-8")
-    except Exception:
-        pass
 
 
 def _lodge_display_name(db: sqlite3.Connection) -> str:
@@ -922,48 +910,6 @@ def dashboard():
         **backup_status,
         **runtime_lock_status,
     )
-
-
-def _handle_app_exit():
-    db = get_db()
-    backup_path = Path(current_app.config.get("BACKUP_DATABASE") or resolve_backup_database_path(Path(current_app.config["DATABASE"])))
-
-    try:
-        current_app.config["RUNTIME_LOCK_STOP_EVENT"].set()
-        release_runtime_lock(
-            db,
-            current_app.config.get("RUNTIME_LOCK_TOKEN", ""),
-            lock_name=current_app.config.get("RUNTIME_LOCK_NAME", "main"),
-            release_reason="app exit",
-        )
-        db.commit()
-    except Exception:
-        pass
-
-    try:
-        backup_database(db, backup_path, primary_path=Path(current_app.config["DATABASE"]))
-    except Exception as exc:
-        record_backup_mirror_failure(current_app, exc, detail="Final backup when exiting failed.")
-
-    try:
-        db.commit()
-    finally:
-        close_db()
-        _signal_launcher_exit()
-
-    shutdown = request.environ.get("werkzeug.server.shutdown")
-    if shutdown is not None:
-        shutdown()
-
-    threading.Timer(2.0, lambda: os._exit(0)).start()
-
-    return {"ok": True, "message": "Treasurer is stopping. You can close this tab now."}
-
-
-@main_bp.post("/app/exit")
-@permission_required("page_home")
-def exit_app():
-    return _handle_app_exit()
 
 
 @main_bp.post("/backup/run")
@@ -2546,9 +2492,3 @@ def balance_transfer_delete(account_code: str, transfer_id: int):
     db.commit()
     flash("Transfer removed.", "success")
     return redirect(_balance_subaccount_transfers_redirect(ac))
-
-
-@main_bp.post("/__shutdown")
-@permission_required("page_home")
-def shutdown_app():
-    return _handle_app_exit()

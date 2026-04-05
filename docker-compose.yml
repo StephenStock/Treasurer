@@ -11,6 +11,7 @@ services:
     environment:
       TREASURER_DATABASE: ${TREASURER_DATABASE:-/data/Treasurer.db}
       TREASURER_BACKUP_DATABASE: ${TREASURER_BACKUP_DATABASE:-/data/Treasurer.backup.db}
+    # SQLite lives here: survives `docker compose up --build`; wiped only with `docker compose down -v` or manual volume delete.
     volumes:
       - treasurer-data:/data
     expose:

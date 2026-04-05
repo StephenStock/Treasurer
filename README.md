@@ -28,7 +28,7 @@ You do not need to activate the environment manually; `start.bat` handles that f
 
 By default the live database is `Treasurer.db` in the same folder as `start.bat`. Optional `config.local` (see `config.local.example`) can set `TREASURER_DATABASE` or `TREASURER_BACKUP_DATABASE` if you want the files elsewhere on **this laptop** only.
 
-You can change the mirrored backup location from the app's Settings page. The app creates the folder if needed and keeps `Treasurer.backup.db` in sync after successful saves (and when you exit cleanly via the launcher).
+You can change the mirrored backup location from the app's Settings page. The app creates the folder if needed and keeps `Treasurer.backup.db` in sync after successful saves.
 
 If another copy is already open, the launcher will stop with a message telling you to shut the other one down first.
 

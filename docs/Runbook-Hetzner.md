@@ -141,6 +141,15 @@ Stops the app container briefly, restores `/data`, restarts, health-checks.
 
 **Deployment and data survival:** `docker compose up -d --build` does **not** remove the named volume `treasurer-data`; your SQLite files under `/data` in the container persist across deploys. Only `docker compose down -v`, deleting the volume manually, or restoring from backup will replace that data.
 
+**Protecting the database in practice:**
+
+| Layer | What to do |
+| --- | --- |
+| **Deploys** | Use normal `deploy.sh` / `docker compose up -d --build`. **Never** run `docker compose down -v` unless you intend to wipe the volume. |
+| **Pre-deploy** | `scripts/deploy.sh` runs `backup_db.sh` first (tar of `/data` into `backups/` on the host). Keep those tars **off-server** too. |
+| **Running system** | Settings → **Back up now** maintains the mirrored `Treasurer.backup.db`; **Download database file** gives a full copy through the browser. |
+| **Schema / new tables** | New releases run `ensure_financial_tables` (and related seeds) on startup so the SQLite file **gains** tables and columns as the code evolves—no separate manual migration step for normal deploys. |
+
 **Cash book vs local Excel:** the app can **seed** cash book rows from the treasurer workbook in the project root **only** when that workbook exists on the machine **and** the cash book table was empty. A typical server has **no** workbook, so you will not see those seeded rows there unless you enter them in the **Cash** UI or **upload** a database that already contains them (from local or from backup).
 
 ## Patching routine

@@ -465,25 +465,6 @@ button,
   border-color: var(--nav-border);
 }
 
-.nav-link-exit {
-  background: var(--accent-soft);
-  border-color: var(--accent-gold);
-  color: var(--accent);
-}
-
-.nav-link-exit:hover,
-.nav-link-exit:focus {
-  background: var(--accent-soft-strong);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.nav-link-exit.is-exiting {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
-}
-
 .page-shell {
   padding-bottom: 3rem;
 }
@@ -768,12 +749,6 @@ button,
 .backup-actions .button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.button.is-exiting {
-  background: var(--warning-bg);
-  border-color: var(--warning-text);
-  color: var(--warning-text);
 }
 
 .attention-banner-warning {
