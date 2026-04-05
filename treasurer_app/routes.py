@@ -98,6 +98,7 @@ from .body_context import (
     focus_allowed_role_codes_from_assignments,
     get_active_body,
     get_focus_role_code,
+    lodge_secretary_workspace_pair,
     picked_workspace_pair,
     set_active_body,
     set_focus_role_code,
@@ -106,7 +107,12 @@ from .body_context import (
     workspace_label_for_pair,
     workspace_pair_is_implemented,
 )
-from .login_config import login_required_unless_disabled, permission_required, user_can
+from .login_config import (
+    WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS,
+    login_required_unless_disabled,
+    permission_required,
+    user_can,
+)
 from .meeting_schedule import MONTH_CHOICES, ORDINAL_LABELS, WEEKDAY_LABELS
 from . import table_admin as ta
 
@@ -196,10 +202,32 @@ _TREASURER_FOCUS_EXEMPT_ENDPOINTS = frozenset(
     }
 )
 
+# Lodge · Secretary may use these lodge URLs (same data as treasurer for members/catering/settings).
+_LODGE_SECRETARY_LODGE_ENDPOINTS = frozenset(
+    {
+        "main.root_redirect",
+        "main.members",
+        "main.update_member_dues",
+        "main.help_page",
+        "main.settings",
+        "main.run_backup_now",
+        "main.open_backup_folder",
+        "main.restore_backup",
+        "main.download_database",
+        "main.upload_database",
+        "main.meal_bookings_list",
+        "main.meal_catering_menu",
+        "main.meal_booking_setup",
+        "main.meal_booking_responses",
+        "main.settings_portal_users",
+        "main.settings_table_admin",
+    }
+)
+
 
 @main_bp.before_request
 def _enforce_treasurer_focus_for_lodge_routes():
-    """Only Lodge·Treasurer and Lodge·Admin may use lodge app URLs; others go to /workspace."""
+    """Treasurer UI for most lodge URLs; Lodge · Secretary may use members/catering/help/settings only."""
     ep = request.endpoint or ""
     if ep == "static" or not ep.startswith("main."):
         return None
@@ -213,6 +241,8 @@ def _enforce_treasurer_focus_for_lodge_routes():
         return None
     pick = picked_workspace_pair(session)
     if pick and workspace_pair_is_implemented(pick[0], pick[1]):
+        return None
+    if pick and lodge_secretary_workspace_pair(pick) and ep in _LODGE_SECRETARY_LODGE_ENDPOINTS:
         return None
     return redirect(url_for("main.workspace_coming_soon"))
 
@@ -1074,7 +1104,10 @@ def _runtime_lock_context():
 
 @main_bp.route("/")
 def root_redirect():
-    """App entry: treasurer home (was a separate portal landing; may revisit role defaults later)."""
+    """App entry: treasurer home, or members for Lodge · Secretary workspace."""
+    pick = picked_workspace_pair(session)
+    if lodge_secretary_workspace_pair(pick):
+        return redirect(url_for("main.members"))
     return redirect(url_for("main.dashboard"))
 
 
@@ -1091,6 +1124,8 @@ def role_select(role_code: str):
     set_active_body(session, "lodge")
     if workspace_pair_is_implemented("lodge", code):
         return redirect(url_for("main.dashboard"))
+    if code == "SECRETARY":
+        return redirect(url_for("main.members"))
     return redirect(url_for("main.workspace_coming_soon"))
 
 
@@ -1108,6 +1143,8 @@ def workspace_select(body: str, role_code: str):
     set_active_body(session, b)
     if workspace_pair_is_implemented(b, code):
         return redirect(url_for("main.dashboard"))
+    if b == "lodge" and code == "SECRETARY":
+        return redirect(url_for("main.members"))
     return redirect(url_for("main.workspace_coming_soon"))
 
 
@@ -1117,6 +1154,8 @@ def workspace_coming_soon():
     pick = picked_workspace_pair(session)
     if pick and workspace_pair_is_implemented(pick[0], pick[1]):
         return redirect(url_for("main.dashboard"))
+    if lodge_secretary_workspace_pair(pick):
+        return redirect(url_for("main.members"))
     assigns = _workspace_assignments_list()
     label = "This workspace"
     if pick:
@@ -2146,13 +2185,13 @@ def cash_entry_delete(entry_id: int):
 
 
 @main_bp.route("/members")
-@permission_required("workspace_lodge_treasury")
+@permission_required(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS)
 def members():
     return render_template("members.html", active_page="members", **_members_page_context())
 
 
 @main_bp.post("/members/<int:member_id>/dues")
-@permission_required("workspace_lodge_treasury")
+@permission_required(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS)
 def update_member_dues(member_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2231,7 +2270,7 @@ def update_member_dues(member_id: int):
 
 
 @main_bp.route("/help")
-@permission_required("workspace_lodge_treasury")
+@permission_required(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS)
 def help_page():
     return render_template("help.html", active_page="help")
 
@@ -2239,13 +2278,13 @@ def help_page():
 @main_bp.route("/forms")
 @permission_required("page_forms")
 def forms():
-    if user_can("workspace_lodge_treasury"):
+    if user_can(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS):
         return redirect(url_for("main.meal_bookings_list"))
     return render_template(
         "placeholder.html",
         active_page="forms",
         title="Public Forms",
-        intro="Meal bookings are available when you select <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong> in the menu. Other public forms can be added here later.",
+        intro="Meal bookings are available when you select <strong>Lodge · Treasurer</strong>, <strong>Lodge · Admin</strong>, or <strong>Lodge · Secretary</strong> in the menu. Other public forms can be added here later.",
     )
 
 
@@ -2941,7 +2980,7 @@ def public_meal_booking(token: str):
 
 
 @main_bp.route("/meal-bookings", methods=["GET", "POST"])
-@permission_required("workspace_lodge_treasury")
+@permission_required(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS)
 def meal_bookings_list():
     db = get_db()
     if request.method == "POST":
@@ -2996,7 +3035,7 @@ def meal_bookings_list():
 
 
 @main_bp.route("/meal-bookings/catering-menu", methods=["GET", "POST"])
-@permission_required("workspace_lodge_treasury")
+@permission_required(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS)
 def meal_catering_menu():
     """Editable master list of dishes and prices (e.g. Affordable Catering); used when building each meeting menu."""
     db = get_db()
@@ -3017,7 +3056,7 @@ def meal_catering_menu():
 
 
 @main_bp.route("/meal-bookings/<int:event_id>/setup", methods=["GET", "POST"])
-@permission_required("workspace_lodge_treasury")
+@permission_required(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS)
 def meal_booking_setup(event_id: int):
     db = get_db()
     event = meal_booking_get_event(db, event_id)
@@ -3099,7 +3138,7 @@ def meal_booking_setup(event_id: int):
 
 
 @main_bp.route("/meal-bookings/<int:event_id>/responses")
-@permission_required("workspace_lodge_treasury")
+@permission_required(WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS)
 def meal_booking_responses(event_id: int):
     db = get_db()
     event = meal_booking_get_event(db, event_id)

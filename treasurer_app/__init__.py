@@ -163,6 +163,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             focus_allowed_role_codes_from_assignments,
             get_active_body,
             get_focus_role_code,
+            lodge_secretary_workspace_pair,
             picked_workspace_pair,
             role_display_name,
             workspace_label_for_pair,
@@ -221,12 +222,19 @@ def create_app(test_config: dict | None = None) -> Flask:
 
         nav_as_signed_in = current_user.is_authenticated or current_app.config.get("LOGIN_DISABLED")
         show_treasurer_ui = workspace_pair_is_implemented(eff_body, eff_code)
+        is_lodge_secretary_nav = bool(
+            nav_as_signed_in and body == "lodge" and lodge_secretary_workspace_pair(pick)
+        )
         return {
             "focus_role_code": eff_code,
             "focus_role_display": role_display_name(eff_code),
             "focus_workspace_label": focus_workspace_label,
             "workspace_assignments": workspace_assignments,
-            "show_treasurer_primary_nav": nav_as_signed_in and show_treasurer_ui and body == "lodge",
+            "show_lodge_secretary_primary_nav": is_lodge_secretary_nav,
+            "show_treasurer_primary_nav": nav_as_signed_in
+            and show_treasurer_ui
+            and body == "lodge"
+            and not is_lodge_secretary_nav,
             "show_chapter_primary_nav": False,
             "show_roles_in_waffle": nav_as_signed_in and len(workspace_assignments) > 0,
         }

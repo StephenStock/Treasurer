@@ -59,6 +59,11 @@ def workspace_pair_is_implemented(body: str, role_code: str) -> bool:
     return (body, role_code) in IMPLEMENTED_WORKSPACE_PAIRS
 
 
+def lodge_secretary_workspace_pair(pick: tuple[str, str] | None) -> bool:
+    """True when the active waffle workspace is Lodge · Secretary (shared members/catering/settings surface)."""
+    return bool(pick and pick[0] == "lodge" and pick[1] == "SECRETARY")
+
+
 def default_picked_workspace_assignment(assignments: list[dict[str, str]]) -> dict[str, str] | None:
     """Default waffle/workspace when the user has not picked one yet.
 

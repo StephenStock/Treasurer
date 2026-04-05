@@ -12,6 +12,10 @@ from .db import get_db
 
 # Session workspace must be Lodge · Treasurer or Lodge · Admin (see body_context.workspace_pair_is_implemented).
 WORKSPACE_LODGE_TREASURY = "workspace_lodge_treasury"
+# Lodge · Secretary: same Members, Catering, Help, and Settings data as treasurer for now.
+WORKSPACE_LODGE_SECRETARY_SURFACE = "workspace_lodge_secretary_surface"
+# Members / catering / help routes allowed for Lodge · Treasurer, Lodge · Admin, or Lodge · Secretary.
+WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS = "workspace_lodge_treasury_or_secretary_tools"
 
 if TYPE_CHECKING:
     from flask import Response
@@ -70,6 +74,14 @@ def user_can(permission_code: str) -> bool:
 
         pick = picked_workspace_pair(session)
         return bool(pick and workspace_pair_is_implemented(pick[0], pick[1]))
+    if permission_code == WORKSPACE_LODGE_SECRETARY_SURFACE:
+        from flask import session
+
+        from .body_context import lodge_secretary_workspace_pair, picked_workspace_pair
+
+        return lodge_secretary_workspace_pair(picked_workspace_pair(session))
+    if permission_code == WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS:
+        return user_can(WORKSPACE_LODGE_TREASURY) or user_can(WORKSPACE_LODGE_SECRETARY_SURFACE)
     if permission_code in ("page_forms", "page_settings"):
         return True
     if permission_code.startswith("admin_"):
@@ -92,7 +104,11 @@ def permission_required(permission_code: str):
                 return redirect(url_for("auth.login", next=request.url))
             if not user_can(permission_code):
                 flash("You don't have access to that area.", "error")
-                if permission_code == WORKSPACE_LODGE_TREASURY:
+                if permission_code in (
+                    WORKSPACE_LODGE_TREASURY,
+                    WORKSPACE_LODGE_SECRETARY_SURFACE,
+                    WORKSPACE_LODGE_TREASURY_OR_SECRETARY_TOOLS,
+                ):
                     return redirect(url_for("main.workspace_coming_soon"))
                 return redirect(url_for("main.settings"))
             return view_func(*args, **kwargs)

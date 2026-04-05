@@ -10,7 +10,7 @@
           <h3>Help</h3>
           <p class="section-note">
             Lodge Office is a local-first web app for lodge administration: members, treasury, reporting, and optional catering workflows.
-            Use the <strong>menu (☰)</strong> to pick a <strong>workspace</strong> (for example Lodge · Treasurer). The full lodge accounts bar appears only for <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong>.
+            Use the <strong>menu (☰)</strong> to pick a <strong>workspace</strong> (for example Lodge · Treasurer). The full lodge accounts bar appears for <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong>. <strong>Lodge · Secretary</strong> shows a shorter bar (Members, Catering, Help, Settings) using the same underlying data for now.
           </p>
         </div>
       </div>
@@ -41,7 +41,7 @@
         The live data is stored in a <strong>SQLite</strong> database file on disk (often named <code>LodgeOffice.db</code> in the app folder, or paths set in <code>config.local</code> / environment variables).
       </p>
       <p>
-        After sign-in, choosing <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong> opens <strong>Treasurer home</strong> and the full accounts navigation (Members, Bank, Cash, Statement, catering, and so on). <strong>Forms</strong> and <strong>Settings</strong> are available to every signed-in user for now.
+        After sign-in, choosing <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong> opens <strong>Treasurer home</strong> and the full accounts navigation (Members, Bank, Cash, Statement, catering, and so on). <strong>Lodge · Secretary</strong> opens <strong>Members</strong> first and shows Members, Catering, Help, and Settings (same data as the treasurer views for those areas). <strong>Forms</strong> and <strong>Settings</strong> are available to every signed-in user for now.
       </p>
     </section>
 
@@ -55,7 +55,7 @@
         You sign in with an email and password. Your administrator creates portal users under <strong>Settings → Portal users</strong>. Each person gets a <strong>directory role</strong> label (for example Treasurer, Secretary) for your records, but what they actually see is set per person: which <strong>menu (☰) workspaces</strong> they may use (lodge vs chapter, and office such as Treasurer or Secretary), and optional <strong>admin</strong> capabilities (managing portal users or the table editor).
       </p>
       <p>
-        The <strong>treasurer</strong> navigation bar appears whenever their active workspace is <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong>; fine-grained per-item toggles for that bar are not implemented.
+        The full <strong>treasurer</strong> navigation bar appears when the active workspace is <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong>. <strong>Lodge · Secretary</strong> uses the shorter bar described above. Fine-grained per-item toggles for the treasurer bar are not implemented.
       </p>
     </section>
 

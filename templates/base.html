@@ -37,6 +37,11 @@
             <a class="nav-link {% if acn == 'members' %}is-active{% endif %}" href="{{ url_for('main.chapter_coming_soon', slug='members') }}">Chapter members</a>
             <a class="nav-link {% if acn == 'communications' %}is-active{% endif %}" href="{{ url_for('main.chapter_coming_soon', slug='communications') }}">Communications</a>
             <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+            {% elif show_lodge_secretary_primary_nav %}
+            <a class="nav-link {% if active_page == 'members' %}is-active{% endif %}" href="{{ url_for('main.members') }}">Members</a>
+            <a class="nav-link {% if active_page in ('meal_bookings', 'meal_catering') %}is-active{% endif %}" href="{{ url_for('main.meal_bookings_list') }}">Catering</a>
+            <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+            <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
             {% elif show_treasurer_primary_nav %}
             <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Treasurer home</a>
             <a class="nav-link {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
