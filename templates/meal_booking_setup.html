@@ -56,17 +56,21 @@
       <h4 class="public-meal-h4">Details</h4>
       <div class="meal-booking-create-grid">
         <label class="settings-field">
-          <span class="settings-label">Title</span>
-          <input type="text" name="title" value="{{ event.title }}" required>
-        </label>
-        <label class="settings-field">
           <span class="settings-label">Lodge meeting (optional)</span>
-          <select name="meeting_id">
-            <option value="">— None —</option>
+          <select id="meal_booking_setup_meeting" name="meeting_id">
+            <option value="" data-suggested-title="">— None —</option>
             {% for m in meetings %}
-              <option value="{{ m.id }}" {% if event.meeting_id is not none and m.id == event.meeting_id %}selected{% endif %}>{{ m.meeting_name }}{% if m.meeting_date %} — {{ m.meeting_date }}{% endif %}</option>
+              <option
+                value="{{ m.id }}"
+                data-suggested-title="{{ ((m.meeting_name ~ ' — ' ~ m.meeting_date) if m.meeting_date else m.meeting_name) | e }}"
+                {% if event.meeting_id is not none and m.id == event.meeting_id %}selected{% endif %}
+              >{{ m.meeting_name }}{% if m.meeting_date %} — {{ m.meeting_date }}{% endif %}</option>
             {% endfor %}
           </select>
+        </label>
+        <label class="settings-field">
+          <span class="settings-label">Title</span>
+          <input id="meal_booking_setup_title" type="text" name="title" value="{{ event.title }}" placeholder="Filled from meeting when changed; you can edit">
         </label>
         <label class="settings-field">
           <span class="settings-label">Meal date</span>
@@ -126,9 +130,17 @@
       <button type="submit" class="button button-secondary">Regenerate public link</button>
     </form>
 
-    <form method="post" class="meal-booking-danger-form" onsubmit="return confirm('Delete this meal booking and all responses?');">
-      <input type="hidden" name="action" value="delete">
-      <button type="submit" class="button button-secondary">Delete meal booking</button>
-    </form>
+    {% if can_delete_meal_booking %}
+      <form method="post" class="meal-booking-danger-form" onsubmit="return confirm('Delete this meal booking and all responses?');">
+        <input type="hidden" name="action" value="delete">
+        <button type="submit" class="button button-secondary">Delete meal booking</button>
+      </form>
+    {% else %}
+      <p class="section-note muted-text">Past meal bookings cannot be deleted.</p>
+    {% endif %}
   </section>
+{% endblock %}
+
+{% block body_scripts %}
+  <script src="{{ url_for('static', filename='js/meal_booking_form.js') }}"></script>
 {% endblock %}

@@ -10,6 +10,9 @@ from flask_login import LoginManager, UserMixin, current_user
 
 from .db import get_db
 
+# Session workspace must be Lodge · Treasurer or Lodge · Admin (see body_context.workspace_pair_is_implemented).
+WORKSPACE_LODGE_TREASURY = "workspace_lodge_treasury"
+
 if TYPE_CHECKING:
     from flask import Response
 
@@ -60,14 +63,25 @@ def user_can(permission_code: str) -> bool:
         return True
     if not current_user.is_authenticated:
         return False
-    db = get_db()
-    from .auth_store import role_has_permission
+    if permission_code == WORKSPACE_LODGE_TREASURY:
+        from flask import session
 
-    return role_has_permission(db, int(current_user.role_id), permission_code)
+        from .body_context import picked_workspace_pair, workspace_pair_is_implemented
+
+        pick = picked_workspace_pair(session)
+        return bool(pick and workspace_pair_is_implemented(pick[0], pick[1]))
+    if permission_code in ("page_forms", "page_settings"):
+        return True
+    if permission_code.startswith("admin_"):
+        db = get_db()
+        from .auth_store import user_has_admin_grant
+
+        return user_has_admin_grant(db, int(current_user.id), permission_code)
+    return False
 
 
 def permission_required(permission_code: str):
-    """Require the signed-in user's role to have this permission (see auth_store.PERMISSION_DEFINITIONS)."""
+    """Enforce access: lodge treasury pages use session workspace; admin_* uses per-user grants."""
 
     def decorator(view_func):
         @wraps(view_func)
@@ -78,7 +92,9 @@ def permission_required(permission_code: str):
                 return redirect(url_for("auth.login", next=request.url))
             if not user_can(permission_code):
                 flash("You don't have access to that area.", "error")
-                return redirect(url_for("main.portal"))
+                if permission_code == WORKSPACE_LODGE_TREASURY:
+                    return redirect(url_for("main.workspace_coming_soon"))
+                return redirect(url_for("main.settings"))
             return view_func(*args, **kwargs)
 
         return wrapped

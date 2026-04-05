@@ -26,17 +26,20 @@
       <h4 class="public-meal-h4">New meal booking</h4>
       <div class="meal-booking-create-grid">
         <label class="settings-field">
-          <span class="settings-label">Title</span>
-          <input type="text" name="title" required placeholder="e.g. September 2026 dinner">
-        </label>
-        <label class="settings-field">
           <span class="settings-label">Lodge meeting (optional)</span>
-          <select name="meeting_id">
-            <option value="">— None —</option>
+          <select id="meal_booking_list_meeting" name="meeting_id">
+            <option value="" data-suggested-title="">— None —</option>
             {% for m in meetings %}
-              <option value="{{ m.id }}">{{ m.meeting_name }}{% if m.meeting_date %} — {{ m.meeting_date }}{% endif %}</option>
+              <option
+                value="{{ m.id }}"
+                data-suggested-title="{{ ((m.meeting_name ~ ' — ' ~ m.meeting_date) if m.meeting_date else m.meeting_name) | e }}"
+              >{{ m.meeting_name }}{% if m.meeting_date %} — {{ m.meeting_date }}{% endif %}</option>
             {% endfor %}
           </select>
+        </label>
+        <label class="settings-field">
+          <span class="settings-label">Title</span>
+          <input id="meal_booking_list_title" type="text" name="title" placeholder="Filled from meeting when chosen; you can edit">
         </label>
         <label class="settings-field">
           <span class="settings-label">Meal date (optional)</span>
@@ -80,10 +83,18 @@
               <td>{{ e.meal_date or "—" }}</td>
               <td>{% if e.is_open %}Yes{% else %}No{% endif %}</td>
               <td class="money-cell">{{ e.response_count }}</td>
-              <td>
+              <td class="meal-booking-list-actions">
                 <a href="{{ url_for('main.meal_booking_setup', event_id=e.id) }}">Setup &amp; link</a>
                 ·
                 <a href="{{ url_for('main.meal_booking_responses', event_id=e.id) }}">Responses</a>
+                {% if e.can_delete_booking %}
+                  ·
+                  <form method="post" action="{{ url_for('main.meal_bookings_list') }}" class="meal-booking-inline-delete-form" onsubmit="return confirm('Delete this meal booking and all responses?');">
+                    <input type="hidden" name="action" value="delete_event">
+                    <input type="hidden" name="event_id" value="{{ e.id }}">
+                    <button type="submit">Delete</button>
+                  </form>
+                {% endif %}
               </td>
             </tr>
           {% else %}
@@ -95,4 +106,8 @@
       </table>
     </div>
   </section>
+{% endblock %}
+
+{% block body_scripts %}
+  <script src="{{ url_for('static', filename='js/meal_booking_form.js') }}"></script>
 {% endblock %}

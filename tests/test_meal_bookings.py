@@ -169,6 +169,46 @@ class MealBookingsTestCase(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(row)
 
+    def test_delete_upcoming_meal_booking_from_list(self) -> None:
+        event_id, _tok = meal_booking_create_event(
+            self.db,
+            title="Future dinner",
+            meal_date="2030-06-01",
+            notes=None,
+        )
+        self.db.commit()
+        r = self.client.post(
+            "/meal-bookings",
+            data={"action": "delete_event", "event_id": str(event_id)},
+            follow_redirects=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        n = self.db.execute(
+            "SELECT COUNT(*) AS n FROM meal_booking_events WHERE id = ?",
+            (event_id,),
+        ).fetchone()["n"]
+        self.assertEqual(int(n), 0)
+
+    def test_delete_past_meal_booking_from_list_blocked(self) -> None:
+        event_id, _tok = meal_booking_create_event(
+            self.db,
+            title="Past dinner",
+            meal_date="2010-01-01",
+            notes=None,
+        )
+        self.db.commit()
+        r = self.client.post(
+            "/meal-bookings",
+            data={"action": "delete_event", "event_id": str(event_id)},
+            follow_redirects=True,
+        )
+        self.assertEqual(r.status_code, 200)
+        n = self.db.execute(
+            "SELECT COUNT(*) AS n FROM meal_booking_events WHERE id = ?",
+            (event_id,),
+        ).fetchone()["n"]
+        self.assertEqual(int(n), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

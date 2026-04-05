@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Chapter | Lodge Office{% endblock %}
+
+{% block content %}
+  <section class="panel chapter-landing">
+    <div class="panel-heading">
+      <div>
+        <h3>Chapter workspace</h3>
+        <p class="section-note">
+          You’re in the <strong>Chapter</strong> area (dark red theme). Open the <strong>menu (☰)</strong> for lodge treasurer shortcuts when you need them.
+        </p>
+      </div>
+    </div>
+
+    <div class="chapter-landing-grid">
+      <article class="dashboard-welcome-card">
+        <h4><a href="{{ url_for('main.chapter_coming_soon', slug='meetings') }}">Meetings &amp; minutes</a></h4>
+        <p class="section-note coming-soon-badge">Coming soon</p>
+        <p class="section-note">Agendas, attendance, and chapter meeting records.</p>
+      </article>
+      <article class="dashboard-welcome-card">
+        <h4><a href="{{ url_for('main.chapter_coming_soon', slug='members') }}">Chapter members</a></h4>
+        <p class="section-note coming-soon-badge">Coming soon</p>
+        <p class="section-note">Member lists and roles for the chapter.</p>
+      </article>
+      <article class="dashboard-welcome-card">
+        <h4><a href="{{ url_for('main.chapter_coming_soon', slug='communications') }}">Communications</a></h4>
+        <p class="section-note coming-soon-badge">Coming soon</p>
+        <p class="section-note">Notices and circulation to companions.</p>
+      </article>
+      <article class="dashboard-welcome-card chapter-landing-card--accent">
+        <h4><a href="{{ url_for('main.dashboard') }}">Lodge accounts &amp; treasurer tools</a></h4>
+        <p class="section-note">Return to <strong>Treasurer home</strong> for bank, cash, statement, catering, and the rest of the lodge books.</p>
+      </article>
+    </div>
+  </section>
+{% endblock %}

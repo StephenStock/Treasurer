@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}{{ placeholder_title }} | Chapter{% endblock %}
+
+{% block content %}
+  <section class="panel chapter-placeholder-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>{{ placeholder_title }}</h3>
+        <p class="section-note">
+          <span class="coming-soon-badge">Coming soon</span>
+          — this area isn’t wired to data yet. Use the <strong>menu (☰)</strong> or <a href="{{ url_for('main.dashboard') }}">Treasurer home</a> for live lodge features.
+        </p>
+      </div>
+    </div>
+    <p class="section-note">
+      <a href="{{ url_for('main.chapter_home') }}">← Chapter home</a>
+      ·
+      <a href="{{ url_for('main.dashboard') }}">Lodge / Treasurer home</a>
+    </p>
+  </section>
+{% endblock %}

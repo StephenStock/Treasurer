@@ -57,7 +57,7 @@ def _send_mail(subject: str, to_email: str, body: str) -> bool:
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("main.portal"))
+        return redirect(url_for("main.dashboard"))
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
@@ -82,7 +82,7 @@ def login():
         db.commit()
         if nxt and nxt.startswith("/"):
             return redirect(nxt)
-        return redirect(url_for("main.portal"))
+        return redirect(url_for("main.dashboard"))
 
     return render_template("auth/login.html", next_url=request.args.get("next") or "")
 

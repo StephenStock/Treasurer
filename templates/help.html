@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Help | Lodge Office{% endblock %}
+
+{% block content %}
+  <article class="help-page">
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h3>Help</h3>
+          <p class="section-note">
+            Lodge Office is a local-first web app for lodge administration: members, treasury, reporting, and optional catering workflows.
+            Use the <strong>menu (☰)</strong> to pick a <strong>workspace</strong> (for example Lodge · Treasurer). The full lodge accounts bar appears only for <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong>.
+          </p>
+        </div>
+      </div>
+
+      <nav class="help-toc" aria-label="On this page">
+        <p class="eyebrow">On this page</p>
+        <ul>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#access">Sign-in, roles, and permissions</a></li>
+          <li><a href="#data">Where your data lives</a></li>
+          <li><a href="#nav">Main areas (top navigation)</a></li>
+          <li><a href="#treasurer">Treasurer workflows</a></li>
+          <li><a href="#settings-help">Settings</a></li>
+          <li><a href="#catering-help">Catering</a></li>
+          <li><a href="#backup">Backups and safety</a></li>
+        </ul>
+      </nav>
+    </section>
+
+    <section class="panel help-section" id="overview">
+      <div class="panel-heading">
+        <div>
+          <h3>Overview</h3>
+        </div>
+      </div>
+      <p>
+        The app runs in your web browser. On a Windows PC it is usually started with <code>start.bat</code>, which creates a virtual environment if needed and opens the site at <code>http://127.0.0.1:5000</code> (or as configured).
+        The live data is stored in a <strong>SQLite</strong> database file on disk (often named <code>LodgeOffice.db</code> in the app folder, or paths set in <code>config.local</code> / environment variables).
+      </p>
+      <p>
+        After sign-in, choosing <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong> opens <strong>Treasurer home</strong> and the full accounts navigation (Members, Bank, Cash, Statement, catering, and so on). <strong>Forms</strong> and <strong>Settings</strong> are available to every signed-in user for now.
+      </p>
+    </section>
+
+    <section class="panel help-section" id="access">
+      <div class="panel-heading">
+        <div>
+          <h3>Sign-in, roles, and permissions</h3>
+        </div>
+      </div>
+      <p>
+        You sign in with an email and password. Your administrator creates portal users under <strong>Settings → Portal users</strong>. Each person gets a <strong>directory role</strong> label (for example Treasurer, Secretary) for your records, but what they actually see is set per person: which <strong>menu (☰) workspaces</strong> they may use (lodge vs chapter, and office such as Treasurer or Secretary), and optional <strong>admin</strong> capabilities (managing portal users or the table editor).
+      </p>
+      <p>
+        The <strong>treasurer</strong> navigation bar appears whenever their active workspace is <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong>; fine-grained per-item toggles for that bar are not implemented.
+      </p>
+    </section>
+
+    <section class="panel help-section" id="data">
+      <div class="panel-heading">
+        <div>
+          <h3>Where your data lives</h3>
+        </div>
+      </div>
+      <ul class="help-list">
+        <li><strong>Primary database:</strong> the working SQLite file the app reads and writes during normal use.</li>
+        <li><strong>Mirrored backup:</strong> after successful saves, the app can copy the database to a backup file (see Settings). Use this for recovery if the primary file is damaged.</li>
+        <li><strong>Excel workbook:</strong> some imports and seeds may reference a workbook next to the app; server deployments may not have one—use in-app screens instead.</li>
+      </ul>
+      <p class="section-note">
+        For deployment, Docker, and server paths, your operator should follow the project runbooks shipped with the repository (for example <code>docs/Runbook.md</code> and hosting notes).
+      </p>
+    </section>
+
+    <section class="panel help-section" id="nav">
+      <div class="panel-heading">
+        <div>
+          <h3>Main areas (top navigation)</h3>
+        </div>
+      </div>
+      <dl class="help-dl">
+        <dt>Portal</dt>
+        <dd>Launch pad to Treasurer home and other areas you are allowed to open.</dd>
+        <dt>Treasurer home</dt>
+        <dd>Dashboard and quick links into the core accounts workflow.</dd>
+        <dt>Statement</dt>
+        <dd>Reporting-period statement and lodge-facing figures (where implemented).</dd>
+        <dt>Members</dt>
+        <dd>Member list, dues, and related updates for the current reporting period.</dd>
+        <dt>Bank</dt>
+        <dd>Bank transactions, categories, splits, and links to the cash book where applicable.</dd>
+        <dt>Cash</dt>
+        <dd>Cash entries grouped by lodge meeting, settlements against bank deposits, and meeting totals.</dd>
+        <dt>Sub Accounts</dt>
+        <dd>Balance sheet style views per internal virtual account (charity, building, etc.), when enabled.</dd>
+        <dt>Auditors</dt>
+        <dd>Pack and figures intended for auditors (where your lodge uses this screen).</dd>
+        <dt>Catering</dt>
+        <dd>Meal bookings, public booking links, and the master catering menu and prices (Secretary or role with access).</dd>
+        <dt>Help</dt>
+        <dd>This page.</dd>
+        <dt>Settings</dt>
+        <dd>Lodge display name, <strong>lodge meeting cycle</strong> (repeating pattern for the five meetings), virtual account mapping, opening balances, backup folder, database download/upload, and portal admin links.</dd>
+      </dl>
+      <p class="section-note">
+        The grid icon (waffle) in the header opens the same destinations in a compact menu.
+      </p>
+    </section>
+
+    <section class="panel help-section" id="treasurer">
+      <div class="panel-heading">
+        <div>
+          <h3>Treasurer workflows</h3>
+        </div>
+      </div>
+      <h4 class="public-meal-h4">Members and dues</h4>
+      <p>Record subscription and dining dues per member for the reporting period. Posts from this area feed reporting and cash expectations.</p>
+      <h4 class="public-meal-h4">Bank</h4>
+      <p>Import or enter bank lines, assign ledger categories, and reconcile splits. Large CSV uploads may be limited by size; fix encoding errors if the app reports them.</p>
+      <h4 class="public-meal-h4">Cash</h4>
+      <p>Cash is organised by the same <strong>meeting keys</strong> as in Settings (September, November, January, March, May). Link deposits to the right meeting and use settlements to tie cash to bank when you bank the takings.</p>
+      <h4 class="public-meal-h4">Statement and sub accounts</h4>
+      <p>Use these for period reporting and for trustees’ views of designated funds. Exact layout depends on your lodge’s configuration.</p>
+    </section>
+
+    <section class="panel help-section" id="settings-help">
+      <div class="panel-heading">
+        <div>
+          <h3>Settings</h3>
+        </div>
+      </div>
+      <p><strong>Lodge name on reports:</strong> shown on the statement and similar outputs; leave blank to use the install default.</p>
+      <p><strong>Lodge meeting cycle:</strong> for each of the five meetings, set the calendar month, weekday, and which week of the month (for example 3rd Saturday). The app stores the <strong>next occurrence on or after today</strong> as the meeting date. Cash and catering use these dates.</p>
+      <p><strong>Virtual account mapping:</strong> choose which internal balance-sheet account each bank category feeds.</p>
+      <p><strong>Opening balances:</strong> figures that roll into the new year as configured for your reporting period.</p>
+      <p><strong>Backup:</strong> set a backup folder the app can write to; use <strong>Back up now</strong> to mirror the database. <strong>Restore</strong> replaces the live file from the mirror (destructive—confirm before use).</p>
+      <p><strong>Database file:</strong> download a copy for cold storage, or upload a replacement file only when you intend to replace the entire live database (your administrator should coordinate this).</p>
+      <p>People granted the relevant admin capabilities see <strong>Portal users</strong> and/or <strong>Table admin</strong> on the Settings page (configured per person under Portal users).</p>
+    </section>
+
+    <section class="panel help-section" id="catering-help">
+      <div class="panel-heading">
+        <div>
+          <h3>Catering</h3>
+        </div>
+      </div>
+      <p>
+        <strong>Catering menu and prices</strong> is the master list of dishes and supplements (editable when your caterer changes the menu). 
+        <strong>New meal booking</strong> creates an event; on setup you can apply dishes from the master list, adjust wording and supplements for that night, and copy a <strong>public link</strong>.
+      </p>
+      <p>
+        Anyone with the link can submit choices <strong>without signing in</strong> to the rest of Lodge Office. Treat the link like a secret—regenerate it in setup if it is leaked.
+      </p>
+      <p>
+        Optionally link a booking to a <strong>lodge meeting</strong> from the list (dates come from Settings). Responses are listed under each booking for the Secretary or catering officer.
+      </p>
+    </section>
+
+    <section class="panel help-section" id="backup">
+      <div class="panel-heading">
+        <div>
+          <h3>Backups and safety</h3>
+        </div>
+      </div>
+      <ul class="help-list">
+        <li>Keep the mirrored backup path on reliable storage (local Documents, OneDrive, or server disk as appropriate).</li>
+        <li>Before major changes (restore, database upload), take an extra manual copy of the database file.</li>
+        <li>Only one instance of the app should hold the runtime lock against the same live database—do not run two copies against one file.</li>
+        <li>For production servers, use HTTPS and normal server hardening; the public meal link is unguessable but should not be posted publicly if you want to limit who books.</li>
+      </ul>
+    </section>
+  </article>
+{% endblock %}

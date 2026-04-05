@@ -1,4 +1,4 @@
-"""Portal landing and /home treasurer dashboard routes."""
+"""Root URL and /home treasurer dashboard routes."""
 
 import tempfile
 import unittest
@@ -26,16 +26,26 @@ class PortalRouteTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.td.cleanup()
 
-    def test_portal_at_root_ok(self) -> None:
-        response = self.client.get("/")
+    def test_root_redirects_to_treasurer_home(self) -> None:
+        response = self.client.get("/", follow_redirects=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"portal-landing", response.data)
-        self.assertIn(b"Treasurer", response.data)
+        self.assertIn(b"dashboard-welcome", response.data)
 
     def test_treasurer_home_at_slash_home(self) -> None:
         response = self.client.get("/home")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"dashboard-welcome", response.data)
+
+    def test_chapter_home_renders(self) -> None:
+        response = self.client.get("/chapter")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"chapter-landing", response.data)
+        self.assertIn(b"body-context-chapter", response.data)
+
+    def test_chapter_coming_soon_placeholder(self) -> None:
+        response = self.client.get("/chapter/coming/meetings")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Coming soon", response.data)
 
 
 if __name__ == "__main__":

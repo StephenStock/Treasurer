@@ -2,7 +2,7 @@ import os
 import threading
 from pathlib import Path
 
-from flask import Flask, current_app, flash, redirect, render_template, request, url_for
+from flask import Flask, current_app, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.security import generate_password_hash
@@ -142,6 +142,86 @@ def create_app(test_config: dict | None = None) -> Flask:
             "default_portal_initial_password": default_portal_initial_password(min_pw),
         }
 
+    @app.context_processor
+    def _inject_body_theme():
+        from .body_context import get_active_body
+
+        body = get_active_body(session)
+        return {
+            "active_body": body,
+            "is_chapter_context": body == "chapter",
+            "theme_color_hex": "#2a1018" if body == "chapter" else "#12151c",
+        }
+
+    @app.context_processor
+    def _inject_focus_role():
+        from flask_login import current_user
+
+        from .auth_store import list_workspace_assignments
+        from .body_context import (
+            focus_allowed_role_codes_from_assignments,
+            get_active_body,
+            get_focus_role_code,
+            picked_workspace_pair,
+            role_display_name,
+            workspace_label_for_pair,
+            workspace_pair_is_implemented,
+        )
+
+        try:
+            db = get_db()
+        except Exception:
+            db = None
+        dev_anon = current_app.config.get("LOGIN_DISABLED") and not current_user.is_authenticated
+        workspace_assignments = list_workspace_assignments(
+            db,
+            current_user,
+            dev_show_treasurer_when_anonymous=dev_anon,
+        )
+        allowed = focus_allowed_role_codes_from_assignments(workspace_assignments)
+        if not allowed:
+            allowed = frozenset({"TREASURER"})
+        code = get_focus_role_code(session, current_user, allowed)
+        body = get_active_body(session)
+        pick = picked_workspace_pair(session)
+        if pick:
+            eff_code = pick[1]
+            if body == "chapter":
+                eff_body = "chapter"
+                focus_workspace_label = next(
+                    (
+                        a["label"]
+                        for a in workspace_assignments
+                        if a["body"] == "chapter" and a["role_code"] == eff_code
+                    ),
+                    None,
+                ) or workspace_label_for_pair("chapter", eff_code)
+            else:
+                eff_body = pick[0]
+                focus_workspace_label = next(
+                    (
+                        a["label"]
+                        for a in workspace_assignments
+                        if a["body"] == eff_body and a["role_code"] == eff_code
+                    ),
+                    None,
+                ) or workspace_label_for_pair(eff_body, eff_code)
+        else:
+            eff_body, eff_code = body, code
+            focus_workspace_label = workspace_label_for_pair(eff_body, eff_code)
+
+        nav_as_signed_in = current_user.is_authenticated or current_app.config.get("LOGIN_DISABLED")
+        show_treasurer_ui = workspace_pair_is_implemented(eff_body, eff_code)
+        return {
+            "focus_role_code": eff_code,
+            "focus_role_display": role_display_name(eff_code),
+            "focus_workspace_label": focus_workspace_label,
+            "workspace_assignments": workspace_assignments,
+            "show_treasurer_primary_nav": nav_as_signed_in and show_treasurer_ui and body == "lodge",
+            "show_chapter_primary_nav": False,
+            "show_roles_in_waffle": nav_as_signed_in and len(workspace_assignments) > 0,
+        }
+
     @app.before_request
     def enforce_runtime_lock():
         if not current_app.config.get("RUNTIME_LOCK_ENABLED", False):
@@ -249,7 +329,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         )
         if (request.path or "").startswith("/bank"):
             return redirect(url_for("main.bank"))
-        return redirect(url_for("main.portal"))
+        return redirect(url_for("main.dashboard"))
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
@@ -286,7 +366,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
         # First admin bootstrap: must run after init_db() as well as on existing DBs (was previously only in the else branch, so fresh DBs never got a bootstrap user).
         if not app.config.get("TESTING"):
-            from .auth_store import count_users, create_user_row, fetch_user_by_email
+            from .auth_store import count_users, create_user_row, fetch_user_by_email, seed_bootstrap_user_access
 
             bootstrap_email = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_EMAIL", "").strip()
             bootstrap_password = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_PASSWORD", "")
@@ -294,12 +374,13 @@ def create_app(test_config: dict | None = None) -> Flask:
             if bootstrap_email and "@" in bootstrap_email and len(bootstrap_password) >= min_pw and count_users(db) == 0:
                 role_row = db.execute("SELECT id FROM roles WHERE code = 'ADMIN'").fetchone()
                 if role_row and fetch_user_by_email(db, bootstrap_email) is None:
-                    create_user_row(
+                    uid = create_user_row(
                         db,
                         bootstrap_email,
                         generate_password_hash(bootstrap_password),
                         int(role_row["id"]),
                     )
+                    seed_bootstrap_user_access(db, uid)
                     db.commit()
 
     return app

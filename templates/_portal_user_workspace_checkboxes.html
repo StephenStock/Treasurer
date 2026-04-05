@@ -1,0 +1,37 @@
+{# expects: workspace_grant_catalog, checked_keys (set-like, keys e.g. lodge:SECRETARY) #}
+<div class="portal-user-ws-fields">
+  <div class="portal-access-section-head">
+    <p class="portal-access-section-title">Menu workspaces (☰)</p>
+    <p class="portal-access-section-hint">
+      Tick each <strong>home page</strong> this person may open from the menu. At least one when saving.
+    </p>
+  </div>
+  <div class="portal-ws-columns" role="group" aria-label="Workspaces">
+    <div class="portal-ws-panel" data-body="lodge">
+      <p class="portal-ws-panel-title">Lodge</p>
+      <div class="portal-ws-option-list">
+        {% for opt in workspace_grant_catalog %}
+        {% if opt.body == 'lodge' %}
+        <label class="portal-ws-option">
+          <input type="checkbox" name="ws" value="{{ opt.value }}" {% if opt.value in checked_keys %}checked{% endif %}>
+          <span class="portal-ws-option-text">{{ opt.label }}</span>
+        </label>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    <div class="portal-ws-panel" data-body="chapter">
+      <p class="portal-ws-panel-title">Chapter</p>
+      <div class="portal-ws-option-list">
+        {% for opt in workspace_grant_catalog %}
+        {% if opt.body == 'chapter' %}
+        <label class="portal-ws-option">
+          <input type="checkbox" name="ws" value="{{ opt.value }}" {% if opt.value in checked_keys %}checked{% endif %}>
+          <span class="portal-ws-option-text">{{ opt.label }}</span>
+        </label>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>

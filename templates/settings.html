@@ -5,20 +5,17 @@
 {% block content %}
   <section class="panel">
     <form method="post" class="settings-form">
-      {% if current_user.is_authenticated and (user_can('admin_users') or user_can('admin_role_permissions') or user_can('admin_table_editor')) %}
+      {% if current_user.is_authenticated and (user_can('admin_users') or user_can('admin_table_editor')) %}
         <section class="settings-section">
           <div class="panel-heading">
             <div>
               <h3>Portal access</h3>
-              <p class="section-note">Manage who can sign in and which roles may access each area of the portal.</p>
+              <p class="section-note">Per-person menu and admin access is configured under <strong>Portal users</strong>.</p>
             </div>
           </div>
           <div class="settings-admin-links">
             {% if user_can('admin_users') %}
             <a class="button button-primary" href="{{ url_for('main.settings_portal_users') }}">Portal users</a>
-            {% endif %}
-            {% if user_can('admin_role_permissions') %}
-            <a class="button" href="{{ url_for('main.settings_role_permissions') }}">Role permissions</a>
             {% endif %}
             {% if user_can('admin_table_editor') %}
             <a class="button" href="{{ url_for('main.settings_table_admin') }}">Table admin</a>

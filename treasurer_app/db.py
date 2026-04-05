@@ -4228,6 +4228,80 @@ def list_meetings_for_meal_booking(db: sqlite3.Connection) -> list[dict[str, obj
     return [dict(r) for r in rows]
 
 
+def list_meetings_for_catering_dropdown(
+    db: sqlite3.Connection,
+    reporting_period_id: int,
+    *,
+    limit: int = 5,
+) -> list[dict[str, object]]:
+    """
+    Lodge meetings for the period: each row's meeting_date is the next occurrence on or after today
+    from schedule rules (fallback: stored meeting_date). Sorted by that date ascending, then limit.
+    """
+    from .meeting_schedule import iso_date, next_occurrence_on_or_after
+
+    if not table_exists(db, "meetings"):
+        return []
+    rows = db.execute(
+        """
+        SELECT id, meeting_key, meeting_name, meeting_date, meeting_type,
+               schedule_month, schedule_weekday, schedule_ordinal, sort_order
+        FROM meetings
+        WHERE reporting_period_id = ?
+        ORDER BY sort_order ASC, id ASC
+        """,
+        (reporting_period_id,),
+    ).fetchall()
+    today = date.today()
+    out: list[dict[str, object]] = []
+    for row in rows:
+        d = dict(row)
+        sm = d.get("schedule_month")
+        sw = d.get("schedule_weekday")
+        so = d.get("schedule_ordinal")
+        if sm is not None and sw is not None and so is not None:
+            try:
+                nd = next_occurrence_on_or_after(int(sm), int(sw), int(so), today)
+                d["meeting_date"] = iso_date(nd)
+            except ValueError:
+                if not d.get("meeting_date"):
+                    continue
+        if not d.get("meeting_date"):
+            continue
+        out.append(d)
+    out.sort(key=lambda m: (str(m.get("meeting_date") or ""), int(m.get("sort_order") or 0), int(m.get("id") or 0)))
+    if limit > 0:
+        out = out[:limit]
+    return out
+
+
+def next_meeting_date_iso_for_meeting_id(db: sqlite3.Connection, meeting_id: int) -> str | None:
+    """Next occurrence on or after today from schedule rules, else stored meeting_date."""
+    from .meeting_schedule import iso_date, next_occurrence_on_or_after
+
+    row = db.execute(
+        """
+        SELECT meeting_date, schedule_month, schedule_weekday, schedule_ordinal
+        FROM meetings
+        WHERE id = ?
+        """,
+        (meeting_id,),
+    ).fetchone()
+    if not row:
+        return None
+    sm, sw, so = row["schedule_month"], row["schedule_weekday"], row["schedule_ordinal"]
+    today = date.today()
+    if sm is not None and sw is not None and so is not None:
+        try:
+            return iso_date(next_occurrence_on_or_after(int(sm), int(sw), int(so), today))
+        except ValueError:
+            pass
+    md = row["meeting_date"]
+    if md is not None and str(md).strip():
+        return str(md).strip()
+    return None
+
+
 def ensure_meal_catalog_tables(db: sqlite3.Connection) -> None:
     db.executescript(
         _schema_sql_for_sqlite(

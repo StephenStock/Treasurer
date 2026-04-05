@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Roles | Lodge Office{% endblock %}
+
+{% block content %}
+  <section class="panel role-workspace-panel">
+    <div class="panel-heading">
+      <div>
+        <h2 class="role-workspace-title">Roles</h2>
+        <p class="section-note">
+          Choose a workspace. The same list appears in the <strong>menu (☰)</strong>.
+          Current: <strong>{{ focus_workspace_label }}</strong>
+        </p>
+      </div>
+    </div>
+
+    <ul class="role-workspace-list role-workspace-list-flat" role="list">
+      {% for a in workspace_assignments %}
+      <li>
+        <a
+          class="role-workspace-option {% if active_body == a.body and focus_role_code == a.role_code %}is-active{% endif %}"
+          href="{{ url_for('main.workspace_select', body=a.body, role_code=a.role_code) }}"
+        >{{ a.label }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endblock %}

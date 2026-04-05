@@ -6,7 +6,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import generate_password_hash
 
 from .backup_mirror_health import clear_failure as clear_backup_mirror_failure
@@ -54,7 +54,8 @@ from .db import (
     verify_sqlite_database_file,
     virtual_account_category_mappings,
     MEAL_BOOKING_COURSES,
-    list_meetings_for_meal_booking,
+    list_meetings_for_catering_dropdown,
+    next_meeting_date_iso_for_meeting_id,
     save_meeting_schedule_rules,
     meal_booking_apply_catalog_selection,
     meal_booking_create_event,
@@ -73,21 +74,177 @@ from .db import (
     meal_booking_update_event,
 )
 from .auth_store import (
+    admin_grant_catalog,
     create_user_row,
     fetch_user_by_email,
     list_roles,
+    list_user_admin_grant_codes,
+    list_user_workspace_grant_keys,
     list_users_with_roles,
-    role_permissions_matrix,
-    set_role_permission,
+    list_workspace_assignments,
+    parse_admin_grant_form_values,
+    parse_workspace_grant_form_values,
+    replace_user_admin_grants,
+    replace_user_workspace_grants,
     set_user_active,
     update_user_password,
     update_user_role,
+    workspace_assignment_is_allowed,
+    workspace_grant_catalog,
 )
-from .login_config import permission_required, user_can
+from flask_login import current_user
+from .body_context import (
+    focus_allowed_role_codes_from_assignments,
+    get_active_body,
+    get_focus_role_code,
+    picked_workspace_pair,
+    set_active_body,
+    set_focus_role_code,
+    set_picked_workspace,
+    valid_role_codes,
+    workspace_label_for_pair,
+    workspace_pair_is_implemented,
+)
+from .login_config import login_required_unless_disabled, permission_required, user_can
 from .meeting_schedule import MONTH_CHOICES, ORDINAL_LABELS, WEEKDAY_LABELS
 from . import table_admin as ta
 
 main_bp = Blueprint("main", __name__)
+
+_CHAPTER_COMING_LABELS: dict[str, str] = {
+    "meetings": "Meetings & minutes",
+    "members": "Chapter members",
+    "communications": "Communications",
+}
+
+
+def _workspace_assignments_list() -> list[dict[str, str]]:
+    dev = current_app.config.get("LOGIN_DISABLED") and not current_user.is_authenticated
+    try:
+        db = get_db()
+    except Exception:
+        db = None
+    return list_workspace_assignments(db, current_user, dev_show_treasurer_when_anonymous=dev)
+
+
+def _session_focus_role_code() -> str:
+    """Role lens for UI gating; matches context_processor _inject_focus_role."""
+    assigns = _workspace_assignments_list()
+    allowed = focus_allowed_role_codes_from_assignments(assigns)
+    if not allowed:
+        allowed = frozenset({"TREASURER"})
+    return get_focus_role_code(session, current_user, allowed)
+
+
+@main_bp.before_request
+def _ensure_picked_workspace_default():
+    """First signed-in request: default waffle workspace (prefer implemented lodge treasurer home)."""
+    ep = request.endpoint or ""
+    if ep == "static" or not ep.startswith("main."):
+        return None
+    nav = current_user.is_authenticated or current_app.config.get("LOGIN_DISABLED")
+    if not nav:
+        return None
+    if picked_workspace_pair(session):
+        return None
+    assigns = _workspace_assignments_list()
+    if not assigns:
+        return None
+    chosen = next(
+        (a for a in assigns if workspace_pair_is_implemented(a["body"], a["role_code"])),
+        None,
+    )
+    if chosen is None:
+        chosen = assigns[0]
+    set_picked_workspace(session, chosen["body"], chosen["role_code"])
+    set_focus_role_code(session, chosen["role_code"])
+    set_active_body(session, chosen["body"])
+    return None
+
+
+@main_bp.before_request
+def _sync_app_body_context():
+    """Theme body: chapter URLs, public meal, or active waffle workspace (chapter vs lodge)."""
+    path = request.path or ""
+    ep = request.endpoint or ""
+    if ep == "static":
+        return None
+    if not ep.startswith("main."):
+        return None
+    if ep in ("main.role_focus_home", "main.workspace_coming_soon"):
+        return None
+    if path.startswith("/meal-booking"):
+        set_active_body(session, "lodge")
+        return None
+    if path.startswith("/chapter"):
+        set_active_body(session, "chapter")
+        return None
+    pick = picked_workspace_pair(session)
+    if pick:
+        set_active_body(session, pick[0])
+    else:
+        set_active_body(session, "lodge")
+    return None
+
+
+_TREASURER_FOCUS_EXEMPT_ENDPOINTS = frozenset(
+    {
+        "main.healthz",
+        "main.role_focus_home",
+        "main.role_select",
+        "main.workspace_select",
+        "main.workspace_coming_soon",
+        "main.chapter_home",
+        "main.chapter_coming_soon",
+        "main.public_meal_booking",
+    }
+)
+
+
+@main_bp.before_request
+def _enforce_treasurer_focus_for_lodge_routes():
+    """Only Lodge·Treasurer and Lodge·Admin may use lodge app URLs; others go to /workspace."""
+    ep = request.endpoint or ""
+    if ep == "static" or not ep.startswith("main."):
+        return None
+    if ep in _TREASURER_FOCUS_EXEMPT_ENDPOINTS:
+        return None
+    nav_as_signed_in = current_user.is_authenticated or current_app.config.get("LOGIN_DISABLED")
+    if not nav_as_signed_in:
+        return None
+    path = request.path or ""
+    if path.startswith("/chapter"):
+        return None
+    pick = picked_workspace_pair(session)
+    if pick and workspace_pair_is_implemented(pick[0], pick[1]):
+        return None
+    return redirect(url_for("main.workspace_coming_soon"))
+
+
+def _suggested_title_for_meeting(db, meeting_id: int) -> str | None:
+    """Meeting name plus next scheduled date (from cycle rules), for defaulting the booking title."""
+    row = db.execute("SELECT meeting_name FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+    if not row:
+        return None
+    name = str(row["meeting_name"] or "").strip()
+    if not name:
+        return None
+    md = next_meeting_date_iso_for_meeting_id(db, meeting_id)
+    if md:
+        return f"{name} — {md}"
+    return name
+
+
+def _meal_booking_event_is_deletable(event: dict) -> bool:
+    """Allow delete for undated bookings or meal dates on or after today."""
+    md = event.get("meal_date")
+    if md is None or str(md).strip() == "":
+        return True
+    try:
+        s = str(md)[:10]
+        return date.fromisoformat(s) >= date.today()
+    except ValueError:
+        return True
 
 
 @main_bp.route("/healthz")
@@ -920,18 +1077,104 @@ def _runtime_lock_context():
 
 
 @main_bp.route("/")
-def portal():
-    """Role-agnostic landing: app launcher and entry points (treasurer-heavy today)."""
-    db = get_db()
+def root_redirect():
+    """App entry: treasurer home (was a separate portal landing; may revisit role defaults later)."""
+    return redirect(url_for("main.dashboard"))
+
+
+@main_bp.route("/role/select/<role_code>")
+@login_required_unless_disabled
+def role_select(role_code: str):
+    """Legacy: lodge body only."""
+    code = role_code.strip().upper()
+    assigns = _workspace_assignments_list()
+    if not workspace_assignment_is_allowed(assigns, "lodge", code):
+        abort(404)
+    set_picked_workspace(session, "lodge", code)
+    set_focus_role_code(session, code)
+    set_active_body(session, "lodge")
+    if workspace_pair_is_implemented("lodge", code):
+        return redirect(url_for("main.dashboard"))
+    return redirect(url_for("main.workspace_coming_soon"))
+
+
+@main_bp.route("/workspace/select/<body>/<role_code>")
+@main_bp.route("/role/workspace/<body>/<role_code>")
+@login_required_unless_disabled
+def workspace_select(body: str, role_code: str):
+    assigns = _workspace_assignments_list()
+    b = (body or "").strip().lower()
+    code = role_code.strip().upper()
+    if b not in ("lodge", "chapter") or not workspace_assignment_is_allowed(assigns, b, code):
+        abort(404)
+    set_picked_workspace(session, b, code)
+    set_focus_role_code(session, code)
+    set_active_body(session, b)
+    if workspace_pair_is_implemented(b, code):
+        return redirect(url_for("main.dashboard"))
+    return redirect(url_for("main.workspace_coming_soon"))
+
+
+@main_bp.route("/workspace")
+@login_required_unless_disabled
+def workspace_coming_soon():
+    pick = picked_workspace_pair(session)
+    if pick and workspace_pair_is_implemented(pick[0], pick[1]):
+        return redirect(url_for("main.dashboard"))
+    assigns = _workspace_assignments_list()
+    label = "This workspace"
+    if pick:
+        label = next(
+            (
+                a["label"]
+                for a in assigns
+                if a["body"] == pick[0] and a["role_code"] == pick[1]
+            ),
+            None,
+        ) or workspace_label_for_pair(pick[0], pick[1])
     return render_template(
-        "portal.html",
-        active_page="portal",
-        lodge_display_name=_lodge_display_name(db),
+        "workspace_coming_soon.html",
+        active_page="workspace_home",
+        coming_soon_workspace_label=label,
+    )
+
+
+@main_bp.route("/role")
+@login_required_unless_disabled
+def role_focus_home():
+    return render_template(
+        "role_workspace.html",
+        active_page="role_focus",
+    )
+
+
+@main_bp.route("/chapter")
+@login_required_unless_disabled
+def chapter_home():
+    return render_template(
+        "chapter_home.html",
+        active_page="chapter_home",
+        active_chapter_nav="home",
+    )
+
+
+@main_bp.route("/chapter/coming/<slug>")
+@login_required_unless_disabled
+def chapter_coming_soon(slug: str):
+    title = _CHAPTER_COMING_LABELS.get(slug)
+    if not title:
+        abort(404)
+    return render_template(
+        "chapter_placeholder.html",
+        active_page="chapter_coming",
+        active_chapter_nav=slug,
+        placeholder_title=title,
+        placeholder_slug=slug,
     )
 
 
 @main_bp.route("/home")
-@permission_required("page_home")
+@permission_required("workspace_lodge_treasury")
 def dashboard():
     db = get_db()
     backup_status = _backup_status_context()
@@ -1126,13 +1369,13 @@ def upload_database():
 
 
 @main_bp.route("/bank")
-@permission_required("page_bank")
+@permission_required("workspace_lodge_treasury")
 def bank():
     return render_template("bank.html", active_page="bank", **_bank_page_context())
 
 
 @main_bp.post("/bank/import")
-@permission_required("page_bank")
+@permission_required("workspace_lodge_treasury")
 def bank_import():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1176,7 +1419,7 @@ def bank_import():
 
 
 @main_bp.post("/bank/rebuild")
-@permission_required("page_bank")
+@permission_required("workspace_lodge_treasury")
 def bank_rebuild_from_workbook():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1216,7 +1459,7 @@ def bank_rebuild_from_workbook():
 
 
 @main_bp.post("/bank/<int:transaction_id>/assign")
-@permission_required("page_bank")
+@permission_required("workspace_lodge_treasury")
 def bank_assign(transaction_id: int):
     db = get_db()
     category_ids = request.form.getlist("allocation_category_id")
@@ -1284,7 +1527,7 @@ def bank_assign(transaction_id: int):
 
 
 @main_bp.post("/bank/<int:transaction_id>/settle")
-@permission_required("page_bank")
+@permission_required("workspace_lodge_treasury")
 def bank_transaction_settle(transaction_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1379,7 +1622,7 @@ def bank_transaction_settle(transaction_id: int):
 
 
 @main_bp.post("/bank/<int:transaction_id>/unsettle")
-@permission_required("page_bank")
+@permission_required("workspace_lodge_treasury")
 def bank_transaction_unsettle(transaction_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1420,7 +1663,7 @@ def bank_transaction_unsettle(transaction_id: int):
 
 
 @main_bp.route("/statement")
-@permission_required("page_statement")
+@permission_required("workspace_lodge_treasury")
 def statement():
     return render_template(
         "statement.html",
@@ -1598,7 +1841,7 @@ def _auditors_member_payment_block(db, reporting_period_id: int) -> dict:
 
 
 @main_bp.route("/auditors")
-@permission_required("page_auditors")
+@permission_required("workspace_lodge_treasury")
 def auditors():
     return render_template(
         "auditors.html",
@@ -1608,7 +1851,7 @@ def auditors():
 
 
 @main_bp.route("/balances/")
-@permission_required("page_balances")
+@permission_required("workspace_lodge_treasury")
 def balances_index():
     db = get_db()
     accounts = virtual_account_report(db)
@@ -1617,7 +1860,7 @@ def balances_index():
 
 
 @main_bp.route("/balances/<account_code>")
-@permission_required("page_balances")
+@permission_required("workspace_lodge_treasury")
 def balance_sheet(account_code: str):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1659,13 +1902,13 @@ def balance_sheet(account_code: str):
 
 
 @main_bp.route("/cash")
-@permission_required("page_cash")
+@permission_required("workspace_lodge_treasury")
 def cash():
     return render_template("cash.html", active_page="cash", **_cash_page_context())
 
 
 @main_bp.post("/cash/settle")
-@permission_required("page_cash")
+@permission_required("workspace_lodge_treasury")
 def cash_settle():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1735,7 +1978,7 @@ def cash_settle():
 
 
 @main_bp.post("/cash/entries/add")
-@permission_required("page_cash")
+@permission_required("workspace_lodge_treasury")
 def cash_entry_add():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1793,7 +2036,7 @@ def cash_entry_add():
 
 
 @main_bp.post("/cash/entries/<int:entry_id>/update")
-@permission_required("page_cash")
+@permission_required("workspace_lodge_treasury")
 def cash_entry_update(entry_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1885,7 +2128,7 @@ def cash_entry_update(entry_id: int):
 
 
 @main_bp.post("/cash/entries/<int:entry_id>/delete")
-@permission_required("page_cash")
+@permission_required("workspace_lodge_treasury")
 def cash_entry_delete(entry_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1907,13 +2150,13 @@ def cash_entry_delete(entry_id: int):
 
 
 @main_bp.route("/members")
-@permission_required("page_members")
+@permission_required("workspace_lodge_treasury")
 def members():
     return render_template("members.html", active_page="members", **_members_page_context())
 
 
 @main_bp.post("/members/<int:member_id>/dues")
-@permission_required("page_members")
+@permission_required("workspace_lodge_treasury")
 def update_member_dues(member_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1992,26 +2235,21 @@ def update_member_dues(member_id: int):
 
 
 @main_bp.route("/help")
-@permission_required("page_help")
+@permission_required("workspace_lodge_treasury")
 def help_page():
-    return render_template(
-        "placeholder.html",
-        active_page="help",
-        title="Help",
-        intro="Handover notes, process guidance, and category definitions can live here.",
-    )
+    return render_template("help.html", active_page="help")
 
 
 @main_bp.route("/forms")
 @permission_required("page_forms")
 def forms():
-    if user_can("page_meal_bookings"):
+    if user_can("workspace_lodge_treasury"):
         return redirect(url_for("main.meal_bookings_list"))
     return render_template(
         "placeholder.html",
         active_page="forms",
         title="Public Forms",
-        intro="Meal bookings are under Meal bookings in the nav (if your role has access). Other public forms can be added here later.",
+        intro="Meal bookings are available when you select <strong>Lodge · Treasurer</strong> or <strong>Lodge · Admin</strong> in the menu. Other public forms can be added here later.",
     )
 
 
@@ -2161,12 +2399,19 @@ def settings_portal_users():
                 flash(f"Password must be at least {min_pw} characters.", "error")
                 return redirect(url_for("main.settings_portal_users"))
             if role_id is None:
-                flash("Choose a role.", "error")
+                flash("Choose a directory role.", "error")
                 return redirect(url_for("main.settings_portal_users"))
             if fetch_user_by_email(db, email):
                 flash("That email is already registered.", "error")
                 return redirect(url_for("main.settings_portal_users"))
-            create_user_row(db, email, generate_password_hash(password), role_id)
+            ws_pairs = parse_workspace_grant_form_values(request.form.getlist("ws"))
+            if not ws_pairs:
+                flash("Select at least one menu workspace for this user.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            adm = parse_admin_grant_form_values(request.form.getlist("adm"))
+            new_id = create_user_row(db, email, generate_password_hash(password), role_id)
+            replace_user_workspace_grants(db, new_id, ws_pairs)
+            replace_user_admin_grants(db, new_id, adm)
             db.commit()
             flash("User created.", "success")
             return redirect(url_for("main.settings_portal_users"))
@@ -2194,56 +2439,31 @@ def settings_portal_users():
                     flash(f"New password must be at least {min_pw} characters.", "error")
                     return redirect(url_for("main.settings_portal_users"))
                 update_user_password(db, user_id, generate_password_hash(new_password))
+            ws_pairs = parse_workspace_grant_form_values(request.form.getlist("ws"))
+            if not ws_pairs:
+                flash("Select at least one menu workspace for this user.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            adm = parse_admin_grant_form_values(request.form.getlist("adm"))
+            replace_user_workspace_grants(db, user_id, ws_pairs)
+            replace_user_admin_grants(db, user_id, adm)
             db.commit()
             flash("User updated.", "success")
             return redirect(url_for("main.settings_portal_users"))
 
     users = list_users_with_roles(db)
+    for u in users:
+        u["workspace_grant_checked"] = list_user_workspace_grant_keys(db, int(u["id"]))
+        u["admin_grant_checked"] = list_user_admin_grant_codes(db, int(u["id"]))
     roles = list_roles(db)
     return render_template(
         "settings_portal_users.html",
         active_page="settings",
         portal_users=users,
         portal_roles=roles,
-        **_backup_status_context(),
-    )
-
-
-@main_bp.route("/settings/role-permissions", methods=["GET", "POST"])
-@permission_required("admin_role_permissions")
-def settings_role_permissions():
-    db = get_db()
-    if request.method == "POST":
-        roles, perm_list, _ = role_permissions_matrix(db)
-        for role in roles:
-            for perm in perm_list:
-                key = f"allow_{role['id']}_{perm['id']}"
-                allowed = request.form.get(key) == "1"
-                set_role_permission(db, int(role["id"]), int(perm["id"]), allowed)
-        db.commit()
-        flash("Role permissions saved.", "success")
-        return redirect(url_for("main.settings_role_permissions"))
-
-    roles, perm_list, matrix = role_permissions_matrix(db)
-    # Flatten for templates: Jinja 3 LoopContext may not expose parent/parentloop on all builds.
-    perm_rows = []
-    for pj, perm in enumerate(perm_list):
-        cells = []
-        for ri, role in enumerate(roles):
-            cells.append(
-                {
-                    "role": role,
-                    "perm": perm,
-                    "checked": matrix[ri][pj],
-                }
-            )
-        perm_rows.append({"perm": perm, "cells": cells})
-    return render_template(
-        "settings_role_permissions.html",
-        active_page="settings",
-        perm_roles=roles,
-        perm_list=perm_list,
-        perm_rows=perm_rows,
+        workspace_grant_catalog=workspace_grant_catalog(),
+        admin_grant_catalog=admin_grant_catalog(),
+        workspace_create_checked=frozenset(),
+        admin_create_checked=frozenset(),
         **_backup_status_context(),
     )
 
@@ -2394,7 +2614,7 @@ def _balance_subaccount_transfers_redirect(account_code: str) -> str:
 
 
 @main_bp.post("/balances/<account_code>/transfers/add")
-@permission_required("page_balances")
+@permission_required("workspace_lodge_treasury")
 def balance_transfer_add(account_code: str):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2454,7 +2674,7 @@ def balance_transfer_add(account_code: str):
 
 
 @main_bp.post("/balances/<account_code>/transfers/<int:transfer_id>/update")
-@permission_required("page_balances")
+@permission_required("workspace_lodge_treasury")
 def balance_transfer_update(account_code: str, transfer_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2518,7 +2738,7 @@ def balance_transfer_update(account_code: str, transfer_id: int):
 
 
 @main_bp.post("/balances/<account_code>/transfers/<int:transfer_id>/delete")
-@permission_required("page_balances")
+@permission_required("workspace_lodge_treasury")
 def balance_transfer_delete(account_code: str, transfer_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2725,22 +2945,37 @@ def public_meal_booking(token: str):
 
 
 @main_bp.route("/meal-bookings", methods=["GET", "POST"])
-@permission_required("page_meal_bookings")
+@permission_required("workspace_lodge_treasury")
 def meal_bookings_list():
     db = get_db()
     if request.method == "POST":
+        if request.form.get("action") == "delete_event":
+            raw_eid = request.form.get("event_id", "")
+            eid = int(raw_eid) if str(raw_eid).isdigit() else None
+            if eid:
+                ev = meal_booking_get_event(db, eid)
+                if ev and _meal_booking_event_is_deletable(ev):
+                    meal_booking_delete_event(db, eid)
+                    db.commit()
+                    flash("Meal booking deleted.", "success")
+                elif ev:
+                    flash("Only upcoming or undated meal bookings can be deleted.", "error")
+                else:
+                    flash("That meal booking was not found.", "error")
+            return redirect(url_for("main.meal_bookings_list"))
+
         title = (request.form.get("title") or "").strip()
+        raw_mid = (request.form.get("meeting_id") or "").strip()
+        meeting_id = int(raw_mid) if raw_mid.isdigit() else None
+        if not title and meeting_id:
+            title = (_suggested_title_for_meeting(db, meeting_id) or "").strip()
         if not title:
-            flash("Title is required.", "error")
+            flash("Title is required (choose a lodge meeting or enter a title).", "error")
             return redirect(url_for("main.meal_bookings_list"))
         meal_date = (request.form.get("meal_date") or "").strip() or None
         notes = (request.form.get("notes") or "").strip() or None
-        raw_mid = (request.form.get("meeting_id") or "").strip()
-        meeting_id = int(raw_mid) if raw_mid.isdigit() else None
         if meeting_id and not meal_date:
-            mrow = db.execute("SELECT meeting_date FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
-            if mrow and mrow["meeting_date"]:
-                meal_date = str(mrow["meeting_date"])
+            meal_date = next_meeting_date_iso_for_meeting_id(db, meeting_id)
         event_id, _tok = meal_booking_create_event(
             db,
             title=title,
@@ -2753,7 +2988,9 @@ def meal_bookings_list():
         return redirect(url_for("main.meal_booking_setup", event_id=event_id))
 
     events = meal_booking_list_events(db)
-    meetings = list_meetings_for_meal_booking(db)
+    for e in events:
+        e["can_delete_booking"] = _meal_booking_event_is_deletable(e)
+    meetings = list_meetings_for_catering_dropdown(db, _current_reporting_period_id())
     return render_template(
         "meal_bookings_list.html",
         active_page="meal_bookings",
@@ -2763,7 +3000,7 @@ def meal_bookings_list():
 
 
 @main_bp.route("/meal-bookings/catering-menu", methods=["GET", "POST"])
-@permission_required("page_meal_bookings")
+@permission_required("workspace_lodge_treasury")
 def meal_catering_menu():
     """Editable master list of dishes and prices (e.g. Affordable Catering); used when building each meeting menu."""
     db = get_db()
@@ -2784,7 +3021,7 @@ def meal_catering_menu():
 
 
 @main_bp.route("/meal-bookings/<int:event_id>/setup", methods=["GET", "POST"])
-@permission_required("page_meal_bookings")
+@permission_required("workspace_lodge_treasury")
 def meal_booking_setup(event_id: int):
     db = get_db()
     event = meal_booking_get_event(db, event_id)
@@ -2801,6 +3038,9 @@ def meal_booking_setup(event_id: int):
             return redirect(url_for("main.meal_booking_setup", event_id=event_id))
 
         if request.form.get("action") == "delete":
+            if not _meal_booking_event_is_deletable(event):
+                flash("This meal booking is in the past and cannot be deleted.", "error")
+                return redirect(url_for("main.meal_booking_setup", event_id=event_id))
             meal_booking_delete_event(db, event_id)
             db.commit()
             flash("Meal booking deleted.", "success")
@@ -2815,18 +3055,18 @@ def meal_booking_setup(event_id: int):
             return redirect(url_for("main.meal_booking_setup", event_id=event_id))
 
         title = (request.form.get("title") or "").strip()
+        raw_mid = (request.form.get("meeting_id") or "").strip()
+        meeting_id = int(raw_mid) if raw_mid.isdigit() else None
+        if not title and meeting_id:
+            title = (_suggested_title_for_meeting(db, meeting_id) or "").strip()
         if not title:
-            flash("Title is required.", "error")
+            flash("Title is required (choose a lodge meeting or enter a title).", "error")
             return redirect(url_for("main.meal_booking_setup", event_id=event_id))
         meal_date = (request.form.get("meal_date") or "").strip() or None
         notes = (request.form.get("notes") or "").strip() or None
         is_open = request.form.get("is_open") == "1"
-        raw_mid = (request.form.get("meeting_id") or "").strip()
-        meeting_id = int(raw_mid) if raw_mid.isdigit() else None
         if meeting_id and not meal_date:
-            mrow = db.execute("SELECT meeting_date FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
-            if mrow and mrow["meeting_date"]:
-                meal_date = str(mrow["meeting_date"])
+            meal_date = next_meeting_date_iso_for_meeting_id(db, meeting_id)
         meal_booking_update_event(
             db,
             event_id=event_id,
@@ -2844,7 +3084,7 @@ def meal_booking_setup(event_id: int):
 
     options_by_course = meal_booking_options_for_event(db, event_id)
     catalog_by_course = meal_catalog_list_by_course(db)
-    meetings = list_meetings_for_meal_booking(db)
+    meetings = list_meetings_for_catering_dropdown(db, _current_reporting_period_id())
     base = request.host_url.rstrip("/")
     public_booking_url = f"{base}{url_for('main.public_meal_booking', token=event['public_token'])}"
     course_labels = {"starter": "Starter", "main": "Main course", "dessert": "Dessert"}
@@ -2852,6 +3092,7 @@ def meal_booking_setup(event_id: int):
         "meal_booking_setup.html",
         active_page="meal_bookings",
         event=event,
+        can_delete_meal_booking=_meal_booking_event_is_deletable(event),
         options_by_course=options_by_course,
         courses=MEAL_BOOKING_COURSES,
         catalog_by_course=catalog_by_course,
@@ -2862,7 +3103,7 @@ def meal_booking_setup(event_id: int):
 
 
 @main_bp.route("/meal-bookings/<int:event_id>/responses")
-@permission_required("page_meal_bookings")
+@permission_required("workspace_lodge_treasury")
 def meal_booking_responses(event_id: int):
     db = get_db()
     event = meal_booking_get_event(db, event_id)

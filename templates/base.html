@@ -4,49 +4,45 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#12151c">
+  <meta name="theme-color" content="{{ theme_color_hex }}">
   <title>{% block title %}Lodge Office{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
   {% block extra_head %}{% endblock %}
 </head>
-<body class="{{ active_page or '' }}">
+<body class="{{ active_page or '' }} body-context-{{ active_body }}">
   <header class="site-header">
     <div class="site-header-top {% if active_page == 'balances' %}reports-open{% endif %}">
       <div class="site-header-main-line">
-        <div class="site-header-brand-cluster">
-          {% include "_app_launcher.html" %}
+        <div class="site-header-head-row">
+          <div class="site-header-start-cluster">
+            {% include "_app_launcher.html" %}
+          </div>
           <div class="site-header-brand">
-          <p class="eyebrow">Lodge Office</p>
-          <h1>{% if active_page == 'portal' %}Portal{% else %}Treasurer{% endif %}</h1>
-          <div class="site-header-user" aria-label="Account">
-            {% if current_user.is_authenticated %}
-              <span class="site-header-user-email">{{ current_user.email }}</span>
-              <a class="site-header-user-link" href="{{ url_for('auth.logout') }}">Sign out</a>
-            {% else %}
-              <a class="site-header-user-link" href="{{ url_for('auth.login') }}">Sign in</a>
-            {% endif %}
+            <p class="eyebrow">{% if is_chapter_context %}Chapter{% else %}Lodge Office{% endif %}</p>
+            <h1>{{ focus_workspace_label }}</h1>
+            <div class="site-header-user" aria-label="Account">
+              {% if current_user.is_authenticated %}
+                <span class="site-header-user-email">{{ current_user.email }}</span>
+              {% else %}
+                <a class="site-header-user-link" href="{{ url_for('auth.login') }}">Sign in</a>
+              {% endif %}
+            </div>
           </div>
-          </div>
-        </div>
-        <nav class="top-nav" aria-label="Primary">
+        <nav class="top-nav site-header-top-nav" aria-label="Primary">
           <div class="top-nav-row">
-            <a class="nav-link {% if active_page == 'portal' %}is-active{% endif %}" href="{{ url_for('main.portal') }}">Portal</a>
-            {% if user_can('page_home') %}
+            {% if show_chapter_primary_nav %}
+            {% set acn = active_chapter_nav|default('') %}
+            <a class="nav-link {% if acn == 'home' %}is-active{% endif %}" href="{{ url_for('main.chapter_home') }}">Chapter home</a>
+            <a class="nav-link {% if acn == 'meetings' %}is-active{% endif %}" href="{{ url_for('main.chapter_coming_soon', slug='meetings') }}">Meetings &amp; minutes</a>
+            <a class="nav-link {% if acn == 'members' %}is-active{% endif %}" href="{{ url_for('main.chapter_coming_soon', slug='members') }}">Chapter members</a>
+            <a class="nav-link {% if acn == 'communications' %}is-active{% endif %}" href="{{ url_for('main.chapter_coming_soon', slug='communications') }}">Communications</a>
+            <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+            {% elif show_treasurer_primary_nav %}
             <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Treasurer home</a>
-            {% endif %}
-            {% if user_can('page_statement') %}
             <a class="nav-link {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
-            {% endif %}
-            {% if user_can('page_members') %}
             <a class="nav-link {% if active_page == 'members' %}is-active{% endif %}" href="{{ url_for('main.members') }}">Members</a>
-            {% endif %}
-            {% if user_can('page_bank') %}
             <a class="nav-link {% if active_page == 'bank' %}is-active{% endif %}" href="{{ url_for('main.bank') }}">Bank</a>
-            {% endif %}
-            {% if user_can('page_cash') %}
             <a class="nav-link {% if active_page == 'cash' %}is-active{% endif %}" href="{{ url_for('main.cash') }}">Cash</a>
-            {% endif %}
-            {% if user_can('page_balances') %}
             <button
               class="nav-link report-toggle {% if active_page == 'balances' %}is-active{% endif %}"
               type="button"
@@ -54,23 +50,16 @@
             >
               Sub Accounts
             </button>
-            {% endif %}
-            {% if user_can('page_auditors') %}
             <a class="nav-link {% if active_page == 'auditors' %}is-active{% endif %}" href="{{ url_for('main.auditors') }}">Auditors</a>
-            {% endif %}
-            {% if user_can('page_settings') %}
-            <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
-            {% endif %}
-            {% if user_can('page_meal_bookings') %}
             <a class="nav-link {% if active_page in ('meal_bookings', 'meal_catering') %}is-active{% endif %}" href="{{ url_for('main.meal_bookings_list') }}">Catering</a>
-            {% endif %}
-            {% if user_can('page_help') %}
             <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+            <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
             {% endif %}
           </div>
         </nav>
+        </div>
       </div>
-      {% if user_can('page_balances') %}
+      {% if show_treasurer_primary_nav %}
       <div class="report-nav-row" aria-label="Sub accounts">
         {% for account in balance_nav_accounts %}
           <a class="nav-menu-item {% if active_page == 'balances' and selected_account is defined and selected_account.code == account.code %}is-active{% endif %}" href="{{ url_for('main.balance_sheet', account_code=account.code) }}">{{ account.display_name }}</a>
@@ -103,5 +92,6 @@
   </main>
 
   <script src="{{ url_for('static', filename='js/site.js') }}"></script>
+  {% block body_scripts %}{% endblock %}
 </body>
 </html>

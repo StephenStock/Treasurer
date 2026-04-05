@@ -7,7 +7,7 @@
     <div class="panel-heading">
       <div>
         <h3>Portal users</h3>
-        <p class="section-note">Create accounts and assign roles. Passwords must be at least {{ min_password_length }} characters. “Add user” pre-fills <code>password</code> so it matches the first-time sign-in email; change it here if you use something else. Disabled users cannot sign in.</p>
+        <p class="section-note">Each person’s <strong>menu (☰)</strong> and <strong>admin tools</strong> are set here only—their <strong>directory role</strong> is just a label for your records. Passwords must be at least {{ min_password_length }} characters.</p>
       </div>
     </div>
 
@@ -25,7 +25,7 @@
             <input type="password" id="new_password" name="password" autocomplete="new-password" minlength="{{ min_password_length }}" value="{{ default_portal_initial_password }}" required>
           </div>
           <div class="settings-single-field">
-            <label for="new_role">Role</label>
+            <label for="new_role">Directory role</label>
             <select id="new_role" name="role_id" required>
               {% for role in portal_roles %}
                 <option value="{{ role.id }}">{{ role.display_name }}</option>
@@ -35,6 +35,14 @@
           <div class="settings-single-field portal-user-create-actions">
             <button type="submit" class="button button-primary">Create user</button>
           </div>
+        </div>
+        <div class="portal-user-access-grid">
+          {% with checked_keys=workspace_create_checked %}
+          {% include "_portal_user_workspace_checkboxes.html" %}
+          {% endwith %}
+          {% with checked_keys=admin_create_checked %}
+          {% include "_portal_user_admin_checkboxes.html" %}
+          {% endwith %}
         </div>
       </form>
     </section>
@@ -46,33 +54,44 @@
           <div class="portal-user-list" role="group" aria-label="Existing portal users">
             <div class="portal-user-list-head">
               <span>Email</span>
-              <span>Role</span>
+              <span>Directory role</span>
               <span>Active</span>
               <span>New password</span>
-              <span class="portal-user-list-head-actions">Actions</span>
             </div>
+            <p class="portal-user-list-hint">Each person is in their own card; <strong>Save</strong> is at the bottom of that card (workspace and admin changes included).</p>
             {% for u in portal_users %}
               <form method="post" class="portal-user-row">
                 <input type="hidden" name="action" value="update">
                 <input type="hidden" name="user_id" value="{{ u.id }}">
-                <div class="portal-user-row-email">{{ u.email }}</div>
-                <div class="settings-single-field portal-user-row-field">
-                  <label class="sr-only" for="role-{{ u.id }}">Role</label>
-                  <select id="role-{{ u.id }}" name="role_id">
-                    {% for role in portal_roles %}
-                      <option value="{{ role.id }}" {% if role.id == u.role_id %}selected{% endif %}>{{ role.display_name }}</option>
-                    {% endfor %}
-                  </select>
+                <div class="portal-user-row-primary">
+                  <div class="portal-user-row-email">{{ u.email }}</div>
+                  <div class="settings-single-field portal-user-row-field">
+                    <label class="sr-only" for="role-{{ u.id }}">Directory role</label>
+                    <select id="role-{{ u.id }}" name="role_id">
+                      {% for role in portal_roles %}
+                        <option value="{{ role.id }}" {% if role.id == u.role_id %}selected{% endif %}>{{ role.display_name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="portal-user-row-active">
+                    <input type="checkbox" name="active" value="1" {% if u.active %}checked{% endif %} aria-label="Account active">
+                  </div>
+                  <div class="settings-single-field portal-user-row-field">
+                    <label class="sr-only" for="pw-{{ u.id }}">New password (optional)</label>
+                    <input type="password" id="pw-{{ u.id }}" name="new_password" autocomplete="new-password" placeholder="Leave blank to keep current" minlength="{{ min_password_length }}">
+                  </div>
                 </div>
-                <div class="portal-user-row-active">
-                  <input type="checkbox" name="active" value="1" {% if u.active %}checked{% endif %} aria-label="Account active">
+                <div class="portal-user-access-grid">
+                  {% with checked_keys=u.workspace_grant_checked %}
+                  {% include "_portal_user_workspace_checkboxes.html" %}
+                  {% endwith %}
+                  {% with checked_keys=u.admin_grant_checked %}
+                  {% include "_portal_user_admin_checkboxes.html" %}
+                  {% endwith %}
                 </div>
-                <div class="settings-single-field portal-user-row-field">
-                  <label class="sr-only" for="pw-{{ u.id }}">New password (optional)</label>
-                  <input type="password" id="pw-{{ u.id }}" name="new_password" autocomplete="new-password" placeholder="Leave blank to keep current" minlength="{{ min_password_length }}">
-                </div>
-                <div class="portal-user-row-actions">
-                  <button type="submit" class="button button-primary">Save</button>
+                <div class="portal-user-row-footer">
+                  <span class="portal-user-save-hint" id="save-hint-{{ u.id }}">Save all changes for <strong>{{ u.email }}</strong></span>
+                  <button type="submit" class="button button-primary" aria-label="Save all changes for {{ u.email }}" aria-describedby="save-hint-{{ u.id }}">Save</button>
                 </div>
               </form>
             {% endfor %}

@@ -1,0 +1,22 @@
+{# expects: admin_grant_catalog, checked_keys (set of permission codes) #}
+<div class="portal-user-admin-fields">
+  <div class="portal-access-section-head">
+    <p class="portal-access-section-title">Admin capabilities</p>
+    <p class="portal-access-section-hint">
+      Optional. Not tied to directory role.
+    </p>
+  </div>
+  <div class="portal-admin-option-list" role="group" aria-label="Admin capabilities">
+    {% for item in admin_grant_catalog %}
+    <label class="portal-ws-option portal-admin-option">
+      <input
+        type="checkbox"
+        name="adm"
+        value="{{ item.code }}"
+        {% if item.code in checked_keys %}checked{% endif %}
+      >
+      <span class="portal-ws-option-text">{{ item.description }}</span>
+    </label>
+    {% endfor %}
+  </div>
+</div>

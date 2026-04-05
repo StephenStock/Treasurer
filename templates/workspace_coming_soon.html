@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Coming soon | Lodge Office{% endblock %}
+
+{% block content %}
+  <section class="panel workspace-coming-soon-panel">
+    <div class="panel-heading">
+      <div>
+        <h2 class="workspace-coming-soon-title">Coming soon</h2>
+        <p class="section-note">
+          <strong>{{ coming_soon_workspace_label }}</strong> is not available yet.
+        </p>
+      </div>
+    </div>
+    <p class="section-note">
+      Open the <strong>menu (☰)</strong> and choose another role, or <strong>Lodge · Treasurer</strong> / <strong>Lodge · Admin</strong> for live lodge accounts.
+    </p>
+    <p class="section-note">
+      <a href="{{ url_for('main.settings') }}">Settings</a> is available for any signed-in role.
+    </p>
+  </section>
+{% endblock %}
