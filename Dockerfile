@@ -1,4 +1,4 @@
-# Production-style image for Treasurer (Flask + SQLite + gunicorn).
+# Production-style image for Lodge Office (Flask + SQLite + gunicorn).
 # Use a single gunicorn worker: the app uses SQLite, which is not suited to multi-process writes.
 
 FROM python:3.12-slim-bookworm
@@ -12,7 +12,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    TREASURER_DATABASE=/data/Treasurer.db
+    TREASURER_DATABASE=/data/LodgeOffice.db
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

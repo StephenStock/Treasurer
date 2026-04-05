@@ -1,0 +1,96 @@
+{% extends "public_meal_base.html" %}
+
+{% block title %}{{ event.title }} | Meal booking{% endblock %}
+
+{% block content %}
+  <section class="panel public-meal-panel">
+    <p class="eyebrow public-meal-eyebrow">Lodge meal</p>
+    <h2>{{ event.title }}</h2>
+    {% if event.meal_date %}
+      <p class="section-note">Date: {{ event.meal_date }}</p>
+    {% endif %}
+    {% if event.notes %}
+      <div class="public-meal-notes">{{ event.notes }}</div>
+    {% endif %}
+
+    {% if not is_open %}
+      <p class="attention-banner attention-banner-error" role="status">This form is closed and is not accepting new responses.</p>
+    {% elif not has_options %}
+      <p class="attention-banner" role="status">Menu choices are not ready yet. Please check back later.</p>
+    {% else %}
+      <form method="post" class="public-meal-form" id="public-meal-form" action="">
+        <h3 class="public-meal-h3">Your details</h3>
+        <label class="settings-field">
+          <span class="settings-label">Your name</span>
+          <input type="text" name="respondent_name" maxlength="200" autocomplete="name" required>
+        </label>
+        <label class="settings-field">
+          <span class="settings-label">Email (optional)</span>
+          <input type="email" name="respondent_email" maxlength="200" autocomplete="email">
+        </label>
+
+        <h3 class="public-meal-h3">Your menu choices</h3>
+        <p class="section-note">Options marked <span class="public-meal-veg-tag">veg</span> are vegetarian alternatives.</p>
+        {% for c in courses %}
+          <fieldset class="meal-course-fieldset">
+            <legend>{{ course_labels[c] }}</legend>
+            <div class="meal-radio-list">
+              {% for opt in options_by_course[c] %}
+                <label class="meal-radio-label">
+                  <input type="radio" name="m_{{ c }}" value="{{ opt.id }}">
+                  <span>{{ opt.label }}{% if opt.is_vegetarian %} <span class="public-meal-veg-tag">(veg)</span>{% endif %}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+        {% endfor %}
+
+        <h3 class="public-meal-h3">Guests</h3>
+        <label class="settings-field">
+          <span class="settings-label">How many guests are you bringing?</span>
+          <select name="guest_count" id="guest_count" aria-controls="guest-slots">
+            {% for n in range(0, max_guests + 1) %}
+              <option value="{{ n }}">{{ n }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <p class="section-note" id="guest-js-hint">Guest menu choices appear when you select a number above.</p>
+
+        <div id="guest-slots" class="guest-slots">
+          {% for gi in range(1, max_guests + 1) %}
+            <div class="guest-slot" data-guest-index="{{ gi }}" hidden>
+              <h4 class="public-meal-h4">Guest {{ gi }}</h4>
+              <label class="settings-field">
+                <span class="settings-label">Guest name</span>
+                <input type="text" name="g{{ gi }}_name" maxlength="200" autocomplete="name">
+              </label>
+              {% for c in courses %}
+                <fieldset class="meal-course-fieldset">
+                  <legend>{{ course_labels[c] }}</legend>
+                  <div class="meal-radio-list">
+                    {% for opt in options_by_course[c] %}
+                      <label class="meal-radio-label">
+                        <input type="radio" name="g{{ gi }}_{{ c }}" value="{{ opt.id }}">
+                        <span>{{ opt.label }}{% if opt.is_vegetarian %} <span class="public-meal-veg-tag">(veg)</span>{% endif %}</span>
+                      </label>
+                    {% endfor %}
+                  </div>
+                </fieldset>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="public-meal-actions">
+          <button type="submit" class="button button-secondary">Submit choices</button>
+        </div>
+      </form>
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {% if is_open and has_options %}
+    <script src="{{ url_for('static', filename='js/meal_booking_public.js') }}" defer></script>
+  {% endif %}
+{% endblock %}

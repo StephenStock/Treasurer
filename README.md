@@ -1,6 +1,6 @@
-# Treasurer Aid
+# Lodge Office
 
-Local-first treasurer aid built with Flask, vanilla JavaScript, and SQLite.
+Local-first lodge administration app built with Flask, vanilla JavaScript, and SQLite. Treasury workflows (members, dues, bank, cash, reporting) are the main focus today; other officer views can grow alongside them.
 
 ## What this repo contains
 
@@ -26,9 +26,9 @@ This will:
 
 You do not need to activate the environment manually; `start.bat` handles that for you.
 
-By default the live database is `Treasurer.db` in the same folder as `start.bat`. Optional `config.local` (see `config.local.example`) can set `TREASURER_DATABASE` or `TREASURER_BACKUP_DATABASE` if you want the files elsewhere on **this laptop** only.
+By default the live database is `LodgeOffice.db` in the same folder as `start.bat` (if `Treasurer.db` from an older install is still there, that file is used until you rename or remove it). Optional `config.local` (see `config.local.example`) can set `TREASURER_DATABASE` or `TREASURER_BACKUP_DATABASE` if you want the files elsewhere on **this laptop** only.
 
-You can change the mirrored backup location from the app's Settings page. The app creates the folder if needed and keeps `Treasurer.backup.db` in sync after successful saves.
+You can change the mirrored backup location from the app's Settings page. The app creates the folder if needed and keeps `LodgeOffice.backup.db` in sync after successful saves.
 
 If another copy is already open, the launcher will stop with a message telling you to shut the other one down first.
 
@@ -54,7 +54,7 @@ The home page shows a one-line backup status and an `Exit App` button. The detai
 
 ## Product direction
 
-- preferred direction: local-first treasurer's aid
+- preferred direction: local-first Lodge Office (treasurer-heavy today)
 - SQLite local default
 - continuity priority: exportability, handover, and spreadsheet fallback
 - canonical operational reference: [`docs/Runbook.md`](docs/Runbook.md)

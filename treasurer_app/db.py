@@ -4,9 +4,11 @@ import csv
 import difflib
 import hashlib
 import io
+import json
 import os
 import posixpath
 import re
+import secrets
 import shutil
 import sqlite3
 import uuid
@@ -54,12 +56,34 @@ APP_SETTING_LODGE_DISPLAY_NAME = "lodge_display_name"
 # Shown on Statement and Auditors until overridden in Settings.
 DEFAULT_LODGE_DISPLAY_NAME = "Stanford-le-Hope Lodge No. 5217"
 
+MEAL_BOOKING_COURSES: tuple[str, ...] = ("starter", "main", "dessert")
+
 # Bank CSV uploads: per-file read cap (UTF-8 text). Whole request also capped in Flask config.
 MAX_BANK_STATEMENT_FILE_BYTES = 8 * 1024 * 1024
 APP_RUNTIME_LOCK_NAME = "main"
 APP_RUNTIME_LOCK_HEARTBEAT_SECONDS = 30
 APP_RUNTIME_LOCK_STALE_SECONDS = 120
-BACKUP_DATABASE_FILENAME = "Treasurer.backup.db"
+# Default SQLite names; legacy "Treasurer*.db" still resolved when present (see default_database_path).
+PRIMARY_DATABASE_FILENAME = "LodgeOffice.db"
+LEGACY_PRIMARY_DATABASE_FILENAME = "Treasurer.db"
+BACKUP_DATABASE_FILENAME = "LodgeOffice.backup.db"
+LEGACY_BACKUP_DATABASE_FILENAME = "Treasurer.backup.db"
+
+# Windows paths stored in app_settings (e.g. after uploading a DB from a PC) are not absolute on Linux;
+# pathlib would join them next to the live DB and produce paths like "/data/C:\\Users\\...".
+_BACKUP_PATH_WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:[/\\]")
+
+
+def backup_folder_setting_unusable_on_this_runtime(raw: str | None) -> bool:
+    """True if we should ignore backup_folder / backup_database from SQLite (cross-OS import)."""
+    if os.name == "nt" or raw is None:
+        return False
+    t = str(raw).strip()
+    if not t:
+        return False
+    if t.startswith("\\\\"):
+        return True
+    return bool(_BACKUP_PATH_WINDOWS_DRIVE.match(t))
 
 BANK_CATEGORY_DEFINITIONS = [
     ("CASH", "Cash", "in", 10),
@@ -190,14 +214,32 @@ def project_root_path() -> Path:
 
 
 def default_database_path() -> Path:
-    configured = os.environ.get("TREASURER_DATABASE")
+    configured = (os.environ.get("TREASURER_DATABASE") or os.environ.get("LODGE_OFFICE_DATABASE") or "").strip()
     if configured:
         return Path(configured)
-    return project_root_path() / "Treasurer.db"
+    root = project_root_path()
+    preferred = root / PRIMARY_DATABASE_FILENAME
+    legacy = root / LEGACY_PRIMARY_DATABASE_FILENAME
+    if preferred.exists():
+        return preferred
+    if legacy.exists():
+        return legacy
+    return preferred
+
+
+def _pick_default_backup_folder_under(root: Path) -> Path:
+    """Prefer 'Lodge Office Backups', fall back to legacy 'Treasurer Backups' if it already exists."""
+    lo = root / "Lodge Office Backups"
+    leg = root / "Treasurer Backups"
+    if lo.exists():
+        return lo
+    if leg.exists():
+        return leg
+    return lo
 
 
 def default_backup_folder_path() -> Path:
-    configured = os.environ.get("TREASURER_BACKUP_DATABASE")
+    configured = (os.environ.get("TREASURER_BACKUP_DATABASE") or os.environ.get("LODGE_OFFICE_BACKUP_DATABASE") or "").strip()
     if configured:
         configured_path = Path(configured)
         if configured_path.suffix.lower() == ".db":
@@ -206,14 +248,14 @@ def default_backup_folder_path() -> Path:
 
     documents_dir = Path.home() / "Documents"
     if documents_dir.exists():
-        return documents_dir / "Treasurer Backups"
+        return _pick_default_backup_folder_under(documents_dir)
 
     for env_name in ("OneDriveCommercial", "OneDriveConsumer", "OneDrive"):
         one_drive_root = os.environ.get(env_name)
         if one_drive_root:
-            return Path(one_drive_root) / "Treasurer Backups"
+            return _pick_default_backup_folder_under(Path(one_drive_root))
 
-    return Path.home() / "Treasurer Backups"
+    return _pick_default_backup_folder_under(Path.home())
 
 
 def backup_database_file_path(backup_folder_path: Path) -> Path:
@@ -490,7 +532,11 @@ def _read_backup_setting(primary_database_path: Path | None = None) -> Path | No
         if not row or not row["setting_value"]:
             return None
 
-        configured_path = Path(str(row["setting_value"]))
+        raw_val = str(row["setting_value"]).strip()
+        if backup_folder_setting_unusable_on_this_runtime(raw_val):
+            return None
+
+        configured_path = Path(raw_val)
         if row["setting_key"] == APP_SETTING_BACKUP_DATABASE and configured_path.suffix.lower() == ".db":
             return configured_path.parent
         return configured_path
@@ -508,12 +554,16 @@ def resolve_backup_database_path(primary_database_path: Path | None = None) -> P
             path = backup_folder
         else:
             path = backup_database_file_path(backup_folder)
-    elif os.environ.get("TREASURER_BACKUP_DATABASE"):
-        configured_path = Path(os.environ["TREASURER_BACKUP_DATABASE"])
-        if configured_path.suffix.lower() == ".db":
-            path = configured_path
+    elif os.environ.get("TREASURER_BACKUP_DATABASE") or os.environ.get("LODGE_OFFICE_BACKUP_DATABASE"):
+        raw = (os.environ.get("TREASURER_BACKUP_DATABASE") or os.environ.get("LODGE_OFFICE_BACKUP_DATABASE") or "").strip()
+        if backup_folder_setting_unusable_on_this_runtime(raw):
+            path = default_backup_database_path()
         else:
-            path = backup_database_file_path(configured_path)
+            configured_path = Path(raw)
+            if configured_path.suffix.lower() == ".db":
+                path = configured_path
+            else:
+                path = backup_database_file_path(configured_path)
     else:
         path = default_backup_database_path()
 
@@ -634,7 +684,7 @@ def verify_sqlite_database_file(path: Path) -> bool:
 def replace_live_database_file(primary_path: Path, new_db_path: Path) -> Path | None:
     """Replace the live SQLite file with ``new_db_path``.
 
-    Copies the previous primary file to ``Treasurer.before-restore.<UTC stamp>.db`` in the same
+    Copies the previous primary file to ``<stem>.before-restore.<UTC stamp>.db`` in the same
     folder when it existed. Removes ``-wal`` / ``-shm`` sidecars next to ``primary_path`` so the
     next connection does not see a stale journal.
     """
@@ -1959,6 +2009,7 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
     from .auth_store import ensure_auth_tables as _ensure_auth_tables
 
     _ensure_auth_tables(db)
+    ensure_meal_booking_tables(db)
 
 
 def _ensure_bank_import_fingerprint(db: DatabaseHandle) -> None:
@@ -3186,6 +3237,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
     entry_rows = db.execute(
         """
         SELECT
+            bta.id AS allocation_id,
             bt.id AS bank_transaction_id,
             bt.transaction_date,
             bt.details,
@@ -3240,6 +3292,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
             account["total_out"] += amount
             account["running_total"] -= amount
         running = account["running_total"]
+        date_key = row["transaction_date"] or "9999-12-31"
         account["entries"].append(
             {
                 "bank_transaction_id": row["bank_transaction_id"],
@@ -3251,6 +3304,12 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                 "direction": row["direction"],
                 "amount": amount,
                 "running_total": account["running_total"],
+                "activity_sort_key": (
+                    date_key,
+                    10,
+                    int(row["bank_transaction_id"]),
+                    int(row["allocation_id"]),
+                ),
             }
         )
 
@@ -3315,9 +3374,11 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
 
         meeting_name = row["meeting_name"] or row["meeting_key"] or "Cash"
         entry_running = account["running_total"]
+        date_key_cash = row["meeting_date"] or "9999-12-31"
         account["entries"].append(
             {
                 "bank_transaction_id": None,
+                "cash_entry_id": row["cash_entry_id"],
                 "transaction_date": row["meeting_date"],
                 "details": f"{meeting_name}: {row['entry_type']} / {row['entry_name']}",
                 "transaction_type": "Cash",
@@ -3326,6 +3387,7 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                 "direction": "in" if is_income else "out",
                 "amount": amount,
                 "running_total": entry_running,
+                "activity_sort_key": (date_key_cash, 20, int(row["cash_entry_id"])),
             }
         )
 
@@ -3364,6 +3426,12 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                     "direction": "transfer_out",
                     "amount": subscription_amount,
                     "running_total": pre_subs_running,
+                    "activity_sort_key": (
+                        "9999-12-31",
+                        30,
+                        row["full_name"],
+                        "subs",
+                    ),
                 }
             )
 
@@ -3384,17 +3452,26 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
                     "direction": "transfer_out",
                     "amount": dining_amount,
                     "running_total": pre_dining_running,
+                    "activity_sort_key": (
+                        "9999-12-31",
+                        30,
+                        row["full_name"],
+                        "dining",
+                    ),
                 }
             )
 
     transfer_rows = db.execute(
         """
         SELECT
+            vat.id,
             vat.amount,
             vat.transfer_date,
             vat.description,
             from_account.code AS from_account_code,
-            to_account.code AS to_account_code
+            to_account.code AS to_account_code,
+            from_account.display_name AS from_display_name,
+            to_account.display_name AS to_display_name
         FROM virtual_account_transfers vat
         LEFT JOIN virtual_accounts from_account ON from_account.id = vat.from_virtual_account_id
         LEFT JOIN virtual_accounts to_account ON to_account.id = vat.to_virtual_account_id
@@ -3408,10 +3485,66 @@ def virtual_account_report(db: sqlite3.Connection, reporting_period_id: int | No
         amount = float(row["amount"] or 0)
         from_code = row["from_account_code"]
         to_code = row["to_account_code"]
+        xfer_id = int(row["id"])
+        tdate = (row["transfer_date"] or "").strip()
+        date_key_xfer = tdate or "9999-12-31"
+        desc = (row["description"] or "").strip()
+        from_display = (row["from_display_name"] or from_code or "?").strip()
+        to_display = (row["to_display_name"] or to_code or "?").strip()
         if from_code and from_code in account_index:
             account_index[from_code]["transfer_out"] += amount
+            details_out = f"Out to {to_display}"
+            if desc:
+                details_out = f"{details_out} — {desc}"
+            account_index[from_code]["entries"].append(
+                {
+                    "bank_transaction_id": None,
+                    "virtual_transfer_id": xfer_id,
+                    "transaction_date": tdate or None,
+                    "details": details_out,
+                    "transaction_type": "Sub-account transfer",
+                    "category_code": None,
+                    "category_name": "Sub-account transfer",
+                    "direction": "transfer_out",
+                    "amount": amount,
+                    "running_total": 0.0,
+                    "activity_sort_key": (date_key_xfer, 40, xfer_id, 0),
+                }
+            )
         if to_code and to_code in account_index:
             account_index[to_code]["transfer_in"] += amount
+            details_in = f"In from {from_display}"
+            if desc:
+                details_in = f"{details_in} — {desc}"
+            account_index[to_code]["entries"].append(
+                {
+                    "bank_transaction_id": None,
+                    "virtual_transfer_id": xfer_id,
+                    "transaction_date": tdate or None,
+                    "details": details_in,
+                    "transaction_type": "Sub-account transfer",
+                    "category_code": None,
+                    "category_name": "Sub-account transfer",
+                    "direction": "transfer_in",
+                    "amount": amount,
+                    "running_total": 0.0,
+                    "activity_sort_key": (date_key_xfer, 40, xfer_id, 1),
+                }
+            )
+
+    for account in account_index.values():
+        entries = account.get("entries") or []
+        entries.sort(key=lambda e: e.get("activity_sort_key", ("9999-12-31", 999, 0)))
+        running = float(account.get("opening_balance") or 0)
+        for entry in entries:
+            direction = entry.get("direction")
+            amt = float(entry.get("amount") or 0)
+            if direction in ("in", "transfer_in"):
+                running += amt
+            elif direction in ("out", "transfer_out"):
+                running -= amt
+            entry["running_total"] = running
+            entry.pop("activity_sort_key", None)
 
     for account in account_index.values():
         account["closing_balance"] = (
@@ -3779,6 +3912,260 @@ def init_db() -> None:
     db.commit()
 
 
+def ensure_meal_booking_tables(db: sqlite3.Connection) -> None:
+    db.executescript(
+        _schema_sql_for_sqlite(
+            """
+            CREATE TABLE IF NOT EXISTS meal_booking_events (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                title TEXT NOT NULL,
+                meal_date TEXT,
+                public_token TEXT NOT NULL UNIQUE,
+                is_open INTEGER NOT NULL DEFAULT 1,
+                notes TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+            );
+
+            CREATE TABLE IF NOT EXISTS meal_booking_options (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                event_id INTEGER NOT NULL,
+                course TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                label TEXT NOT NULL,
+                is_vegetarian INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
+                FOREIGN KEY (event_id) REFERENCES meal_booking_events (id) ON DELETE CASCADE,
+                CHECK (course IN ('starter', 'main', 'dessert'))
+            );
+
+            CREATE TABLE IF NOT EXISTS meal_booking_responses (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                event_id INTEGER NOT NULL,
+                respondent_name TEXT NOT NULL,
+                respondent_email TEXT,
+                guest_count INTEGER NOT NULL DEFAULT 0,
+                choices_json TEXT NOT NULL,
+                submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
+                FOREIGN KEY (event_id) REFERENCES meal_booking_events (id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_meal_booking_options_event_id ON meal_booking_options (event_id);
+            CREATE INDEX IF NOT EXISTS idx_meal_booking_responses_event_id ON meal_booking_responses (event_id);
+            """
+        )
+    )
+
+
+def meal_booking_new_token() -> str:
+    return secrets.token_hex(32)
+
+
+def meal_booking_create_event(
+    db: sqlite3.Connection,
+    *,
+    title: str,
+    meal_date: str | None,
+    notes: str | None,
+) -> tuple[int, str]:
+    token = meal_booking_new_token()
+    cur = db.execute(
+        """
+        INSERT INTO meal_booking_events (title, meal_date, public_token, is_open, notes)
+        VALUES (?, ?, ?, 1, ?)
+        """,
+        (title.strip(), meal_date or None, token, (notes or "").strip() or None),
+    )
+    return int(cur.lastrowid), token
+
+
+def meal_booking_get_event(db: sqlite3.Connection, event_id: int) -> dict[str, object] | None:
+    row = db.execute(
+        "SELECT * FROM meal_booking_events WHERE id = ?",
+        (event_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def meal_booking_get_event_by_token(db: sqlite3.Connection, token: str) -> dict[str, object] | None:
+    row = db.execute(
+        "SELECT * FROM meal_booking_events WHERE public_token = ?",
+        ((token or "").strip(),),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def meal_booking_list_events(db: sqlite3.Connection) -> list[dict[str, object]]:
+    rows = db.execute(
+        """
+        SELECT e.*,
+               (SELECT COUNT(*) FROM meal_booking_responses r WHERE r.event_id = e.id) AS response_count
+        FROM meal_booking_events e
+        ORDER BY
+            CASE WHEN e.meal_date IS NULL OR e.meal_date = '' THEN 1 ELSE 0 END,
+            e.meal_date DESC,
+            e.id DESC
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def meal_booking_update_event(
+    db: sqlite3.Connection,
+    *,
+    event_id: int,
+    title: str,
+    meal_date: str | None,
+    notes: str | None,
+    is_open: bool,
+) -> bool:
+    cur = db.execute(
+        """
+        UPDATE meal_booking_events
+        SET title = ?, meal_date = ?, notes = ?, is_open = ?
+        WHERE id = ?
+        """,
+        (
+            title.strip(),
+            meal_date or None,
+            (notes or "").strip() or None,
+            1 if is_open else 0,
+            event_id,
+        ),
+    )
+    return cur.rowcount > 0
+
+
+def meal_booking_regenerate_public_token(db: sqlite3.Connection, event_id: int) -> str | None:
+    token = meal_booking_new_token()
+    cur = db.execute(
+        "UPDATE meal_booking_events SET public_token = ? WHERE id = ?",
+        (token, event_id),
+    )
+    if cur.rowcount:
+        return token
+    return None
+
+
+def meal_booking_delete_event(db: sqlite3.Connection, event_id: int) -> bool:
+    cur = db.execute("DELETE FROM meal_booking_events WHERE id = ?", (event_id,))
+    return cur.rowcount > 0
+
+
+def meal_booking_replace_options(
+    db: sqlite3.Connection,
+    event_id: int,
+    rows: list[tuple[str, str, int, bool]],
+) -> None:
+    """rows: (course, label, sort_order, is_vegetarian)."""
+    db.execute("DELETE FROM meal_booking_options WHERE event_id = ?", (event_id,))
+    for course, label, sort_order, is_veg in rows:
+        label = (label or "").strip()
+        if not label:
+            continue
+        if course not in MEAL_BOOKING_COURSES:
+            continue
+        db.execute(
+            """
+            INSERT INTO meal_booking_options (event_id, course, sort_order, label, is_vegetarian)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (event_id, course, sort_order, label, 1 if is_veg else 0),
+        )
+
+
+def meal_booking_options_for_event(
+    db: sqlite3.Connection,
+    event_id: int,
+) -> dict[str, list[dict[str, object]]]:
+    rows = db.execute(
+        """
+        SELECT id, course, sort_order, label, is_vegetarian
+        FROM meal_booking_options
+        WHERE event_id = ?
+        ORDER BY course, sort_order, id
+        """,
+        (event_id,),
+    ).fetchall()
+    out: dict[str, list[dict[str, object]]] = {c: [] for c in MEAL_BOOKING_COURSES}
+    for row in rows:
+        course = str(row["course"])
+        if course not in out:
+            continue
+        out[course].append(
+            {
+                "id": int(row["id"]),
+                "course": course,
+                "sort_order": int(row["sort_order"]),
+                "label": row["label"],
+                "is_vegetarian": bool(row["is_vegetarian"]),
+            }
+        )
+    return out
+
+
+def meal_booking_option_label_map(db: sqlite3.Connection, event_id: int) -> dict[int, dict[str, object]]:
+    rows = db.execute(
+        """
+        SELECT id, course, label, is_vegetarian
+        FROM meal_booking_options
+        WHERE event_id = ?
+        """,
+        (event_id,),
+    ).fetchall()
+    return {
+        int(r["id"]): {"course": r["course"], "label": r["label"], "is_vegetarian": bool(r["is_vegetarian"])}
+        for r in rows
+    }
+
+
+def meal_booking_insert_response(
+    db: sqlite3.Connection,
+    *,
+    event_id: int,
+    respondent_name: str,
+    respondent_email: str | None,
+    guest_count: int,
+    choices: dict[str, object],
+) -> int:
+    cur = db.execute(
+        """
+        INSERT INTO meal_booking_responses (
+            event_id, respondent_name, respondent_email, guest_count, choices_json
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            event_id,
+            respondent_name.strip(),
+            (respondent_email or "").strip() or None,
+            guest_count,
+            json.dumps(choices, ensure_ascii=False),
+        ),
+    )
+    return int(cur.lastrowid)
+
+
+def meal_booking_list_responses(db: sqlite3.Connection, event_id: int) -> list[dict[str, object]]:
+    rows = db.execute(
+        """
+        SELECT id, respondent_name, respondent_email, guest_count, choices_json, submitted_at
+        FROM meal_booking_responses
+        WHERE event_id = ?
+        ORDER BY submitted_at DESC, id DESC
+        """,
+        (event_id,),
+    ).fetchall()
+    result: list[dict[str, object]] = []
+    for row in rows:
+        d = dict(row)
+        try:
+            d["choices"] = json.loads(str(d.pop("choices_json")))
+        except (json.JSONDecodeError, TypeError):
+            d["choices"] = {}
+        result.append(d)
+    return result
+
+
 def init_app(app) -> None:
     @app.cli.command("init-db")
     def init_db_command() -> None:
@@ -3834,7 +4221,7 @@ def init_app(app) -> None:
             return
 
         print(
-            "Treasurer is already running on "
+            "Lodge Office is already running on "
             f"{lock_row['machine_name']} as {lock_row['owner_name']} "
             f"since {lock_row['locked_at']}."
         )

@@ -1,10 +1,10 @@
-# Treasurer — Hetzner Cloud runbook (production)
+# Lodge Office — Hetzner Cloud runbook (production)
 
-Operational reference for the **Docker-based** deployment on a **single Ubuntu server** (Hetzner Cloud). Local laptop workflows stay in `Runbook.md`.
+Operational reference for the **Docker-based** deployment of **Lodge Office** on a **single Ubuntu server** (Hetzner Cloud). Local laptop workflows stay in `Runbook.md`.
 
 ## System purpose
 
-- Host the Treasurer **Flask** app for a **very small** user base (on the order of 3–4 people).
+- Host the Lodge Office **Flask** app for a **very small** user base (on the order of 3–4 people).
 - Keep operations **scripted and repeatable**: deploy, rollback, backup, restore, health check.
 - **SQLite first** — the codebase is SQLite-only today; PostgreSQL is future work (see `architecture.md`).
 
@@ -12,7 +12,7 @@ Operational reference for the **Docker-based** deployment on a **single Ubuntu s
 
 - **OS:** Ubuntu 24.04 LTS (example: server `lodge`, CX23-class: 2 vCPU, 4 GB RAM, 40 GB disk, backups enabled).
 - **Containers:** `app` (Flask + Gunicorn) and `caddy` (reverse proxy, TLS when using a real DNS name).
-- **Data:** Docker volume `treasurer-data` mounted at `/data` in the app container (`Treasurer.db` + `Treasurer.backup.db`).
+- **Data:** Docker volume `treasurer-data` mounted at `/data` in the app container (`LodgeOffice.db` + `LodgeOffice.backup.db` by default; legacy `Treasurer*.db` paths still work if set in `.env`).
 - **Firewall (Hetzner):** inbound **22**, **80**, **443** only; no public database port.
 
 Repository layout for deployment:
@@ -32,7 +32,7 @@ Repository layout for deployment:
 ## Server assumptions
 
 - Docker Engine and Docker Compose plugin installed.
-- Git repository cloned to a fixed path (e.g. `/opt/treasurer`) with `origin` pointing at your canonical remote.
+- Git repository cloned to a fixed path (e.g. `/opt/treasurer`) with `origin` pointing at your canonical remote (this repo: **`lodge-office`** on GitHub).
 - SSH key access for administrators; **non-root** deploy user with `sudo` if required.
 - **Hetzner Cloud firewall** attached to the server with the rules above.
 
@@ -136,7 +136,7 @@ Stops the app container briefly, restores `/data`, restarts, health-checks.
 
 **In-app SQLite file (Settings → Copy database file):**
 
-- **Download database file** — saves a consistent snapshot of the live `Treasurer.db` through your browser (e.g. to your laptop). Use this for an extra off-server copy without SSH.
+- **Download database file** — saves a consistent snapshot of the live SQLite file through your browser (e.g. to your laptop). Use this for an extra off-server copy without SSH.
 - **Upload and replace database** — replaces the live database with the chosen `.db` file. The previous file is copied aside in the same folder as `Treasurer.before-restore.<UTC stamp>.db`. Use when promoting data from a local PC to the server or restoring a known-good copy.
 
 **Deployment and data survival:** `docker compose up -d --build` does **not** remove the named volume `treasurer-data`; your SQLite files under `/data` in the container persist across deploys. Only `docker compose down -v`, deleting the volume manually, or restoring from backup will replace that data.
@@ -147,7 +147,7 @@ Stops the app container briefly, restores `/data`, restarts, health-checks.
 | --- | --- |
 | **Deploys** | Use normal `deploy.sh` / `docker compose up -d --build`. **Never** run `docker compose down -v` unless you intend to wipe the volume. |
 | **Pre-deploy** | `scripts/deploy.sh` runs `backup_db.sh` first (tar of `/data` into `backups/` on the host). Keep those tars **off-server** too. |
-| **Running system** | Settings → **Back up now** maintains the mirrored `Treasurer.backup.db`; **Download database file** gives a full copy through the browser. |
+| **Running system** | Settings → **Back up now** maintains the mirrored backup file; **Download database file** gives a full copy through the browser. |
 | **Schema / new tables** | New releases run `ensure_financial_tables` (and related seeds) on startup so the SQLite file **gains** tables and columns as the code evolves—no separate manual migration step for normal deploys. |
 
 **Cash book vs local Excel:** the app can **seed** cash book rows from the treasurer workbook in the project root **only** when that workbook exists on the machine **and** the cash book table was empty. A typical server has **no** workbook, so you will not see those seeded rows there unless you enter them in the **Cash** UI or **upload** a database that already contains them (from local or from backup).
@@ -173,7 +173,7 @@ The app exposes **`GET /healthz`** (plain `ok`, HTTP 200). It does **not** hit t
 **Last resort — SQLite shell on the server:**
 
 ```bash
-docker compose exec app sqlite3 /data/Treasurer.db
+docker compose exec app sqlite3 /data/LodgeOffice.db
 ```
 
 Only for break-glass scenarios; **no** PostgreSQL CLI until Postgres is adopted.
@@ -212,3 +212,5 @@ Document *who* ran *what* and *why* when manual SQL is unavoidable.
 | --- | --- |
 | 2026-04-03 | Initial Hetzner Docker runbook and scripts. |
 | 2026-04-03 | Documented portal sign-in, bootstrap admin, optional mail, `/healthz` unauthenticated, and replaced outdated “no application login” note. |
+| 2026-04-05 | Product naming: Lodge Office; GitHub repo `lodge-office`; operational filenames (`Treasurer.db`, etc.) unchanged. |
+| 2026-04-06 | Default SQLite files: `LodgeOffice.db` / `LodgeOffice.backup.db`; legacy `Treasurer*.db` supported. |

@@ -1,8 +1,8 @@
-# Treasurer Hosting Runbook (Azure)
+# Lodge Office — hosting runbook (Azure)
 
 ## Purpose
 
-This document is the operational reference for **hosting** the Treasurer app on **Microsoft Azure** (or migrating toward it). It is written for **handover**: a future maintainer should be able to find accounts, resources, and recovery steps without SSH skills or prior cloud experience.
+This document is the operational reference for **hosting** Lodge Office on **Microsoft Azure** (or migrating toward it). It is written for **handover**: a future maintainer should be able to find accounts, resources, and recovery steps without SSH skills or prior cloud experience.
 
 **Primary production path today:** single-server **Docker on Hetzner** — see **`Runbook-Hetzner.md`** for deploy scripts, Caddy, and SQLite backups.
 

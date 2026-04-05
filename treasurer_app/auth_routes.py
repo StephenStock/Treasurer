@@ -57,7 +57,7 @@ def _send_mail(subject: str, to_email: str, body: str) -> bool:
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("main.portal"))
 
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
@@ -82,7 +82,7 @@ def login():
         db.commit()
         if nxt and nxt.startswith("/"):
             return redirect(nxt)
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("main.portal"))
 
     return render_template("auth/login.html", next_url=request.args.get("next") or "")
 
@@ -112,11 +112,11 @@ def forgot_password():
         base = (request.url_root or "").rstrip("/")
         reset_url = f"{base}{url_for('auth.reset_password', token=raw)}"
         body = (
-            "You asked to reset your Treasurer portal password.\n\n"
+            "You asked to reset your Lodge Office portal password.\n\n"
             f"Open this link (valid for a short time):\n{reset_url}\n\n"
             "If you did not request this, you can ignore this message."
         )
-        sent = _send_mail("Reset your Treasurer portal password", email, body)
+        sent = _send_mail("Reset your Lodge Office portal password", email, body)
         if not sent:
             flash(
                 "Email is not configured on the server, or sending failed. "

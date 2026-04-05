@@ -1,8 +1,8 @@
-# Treasurer Runbook
+# Lodge Office — local runbook
 
 ## Purpose
 
-This runbook is the single operational reference for the **local** Treasurer app.
+This runbook is the single operational reference for the **local** Lodge Office app (treasurer workflows are the bulk of the UI today).
 
 For **Azure hosting**, subscriptions, and handover of cloud resources, use `docs/Runbook-Hosting.md`.
 
@@ -20,7 +20,7 @@ The current preferred operating model is:
 - App stack: Flask, server-rendered templates, light vanilla JavaScript, Flask-Login for sessions
 - Operating mode: local Windows laptop, browser pointed at `127.0.0.1`; **sign-in required** for all app pages except static assets and the **`/healthz`** probe
 - Portal accounts: email + password, each user has **one role** (Secretary, Treasurer, Auditor, Admin, Charity Steward, Master). **Role permissions** (Settings → Role permissions) control which **pages and admin actions** each non-admin role may use; the main nav only shows areas the current user may access. Users with the **Admin** role **always** have full access regardless of matrix checkboxes (the Admin column is still useful for reference when tuning other roles)
-- Database: SQLite file on this machine (`Treasurer.db` next to `start.bat` unless overridden in `config.local`)
+- Database: SQLite file on this machine (`LodgeOffice.db` next to `start.bat` by default; legacy `Treasurer.db` is still used if present unless overridden in `config.local`)
 - Mirrored backup: folder from Settings (or `TREASURER_BACKUP_DATABASE`), kept in sync after successful saves
 - Single active-copy lock: only one running copy should hold the database at a time
 - Mirrored backup folder can also be changed from the app's Settings page and is stored with the database
@@ -66,8 +66,8 @@ The venv is managed automatically by the launcher, so manual activation is not p
 
 ### Local database expectations
 
-- SQLite is the storage engine; one treasurer, one laptop, one canonical `Treasurer.db`
-- Default live path: `Treasurer.db` in the project folder (`start.bat` sets this unless `config.local` overrides)
+- SQLite is the storage engine; one treasurer, one laptop, one canonical `LodgeOffice.db` (legacy `Treasurer.db` supported)
+- Default live path: `LodgeOffice.db` in the project folder (`start.bat` sets this unless `config.local` overrides)
 - Optional `config.local`: set `TREASURER_DATABASE` to another path **on this PC** if you want the live file outside the repo folder
 - Keep the mirrored backup in a safe folder (for example under OneDrive); avoid letting cloud sync fight SQLite on the **live** file
 - If another copy of the app is already running, `start.bat` should stop and tell you to close the other instance first
@@ -76,7 +76,7 @@ The venv is managed automatically by the launcher, so manual activation is not p
 
 - Create `config.local` next to `start.bat` only if you need non-default paths
 - `TREASURER_DATABASE`: full path to the live `.db` file on this machine
-- `TREASURER_BACKUP_DATABASE`: backup file path or folder (folder receives `Treasurer.backup.db`)
+- `TREASURER_BACKUP_DATABASE`: backup file path or folder (folder receives `LodgeOffice.backup.db`; legacy `Treasurer.backup.db` still readable if configured)
 - The Settings page can adjust the backup folder for day-to-day use
 
 ### Sign-in and portal administration
@@ -217,4 +217,6 @@ Confirm:
 | Date | Change |
 | --- | --- |
 | 2026-04-03 | Documented sign-in, roles, admin screens, bootstrap admin, mail and `LOGIN_DISABLED` env vars, and `/healthz` behavior. |
+| 2026-04-05 | Product naming: Lodge Office; local runbook title updated; on-disk DB names unchanged. |
+| 2026-04-06 | Default DB files: `LodgeOffice.db` / `LodgeOffice.backup.db`; legacy `Treasurer*.db` still supported. |
 

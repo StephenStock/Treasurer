@@ -39,7 +39,7 @@ This spec does not cover:
 
 - App uses Flask with an application factory
 - App uses SQLite for its local database
-- Local live storage defaults to `Treasurer.db` in the project folder, or can be overridden with `TREASURER_DATABASE` in `config.local`
+- Local live storage defaults to `LodgeOffice.db` in the project folder (legacy `Treasurer.db` if still present), or can be overridden with `TREASURER_DATABASE` / `LODGE_OFFICE_DATABASE` in `config.local`
 - Mirrored backup storage is a one-way safety copy written to a backup folder from the app settings
 - The launcher enforces a single active copy so the database is not opened twice at once
 - The mirrored backup folder can be overridden with `TREASURER_BACKUP_DATABASE`

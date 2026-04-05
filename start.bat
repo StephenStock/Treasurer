@@ -2,17 +2,29 @@
 cd /d "%~dp0"
 
 if "%LOCALAPPDATA%"=="" set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
-set "APP_DATA=%LOCALAPPDATA%\Treasurer"
+set "APP_DATA=%LOCALAPPDATA%\LodgeOffice"
 set "LOCAL_DB_DIR=%~dp0"
 set "VENV_DIR=%~dp0.venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 if exist "%~dp0config.local" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0config.local") do (
         if /i "%%A"=="TREASURER_DATABASE" if not defined TREASURER_DATABASE set "TREASURER_DATABASE=%%B"
+        if /i "%%A"=="LODGE_OFFICE_DATABASE" if not defined LODGE_OFFICE_DATABASE set "LODGE_OFFICE_DATABASE=%%B"
         if /i "%%A"=="TREASURER_BACKUP_DATABASE" if not defined TREASURER_BACKUP_DATABASE set "TREASURER_BACKUP_DATABASE=%%B"
+        if /i "%%A"=="LODGE_OFFICE_BACKUP_DATABASE" if not defined LODGE_OFFICE_BACKUP_DATABASE set "LODGE_OFFICE_BACKUP_DATABASE=%%B"
     )
 )
-if "%TREASURER_DATABASE%"=="" set "TREASURER_DATABASE=%LOCAL_DB_DIR%\Treasurer.db"
+if not defined TREASURER_DATABASE if defined LODGE_OFFICE_DATABASE set "TREASURER_DATABASE=%LODGE_OFFICE_DATABASE%"
+if not defined TREASURER_BACKUP_DATABASE if defined LODGE_OFFICE_BACKUP_DATABASE set "TREASURER_BACKUP_DATABASE=%LODGE_OFFICE_BACKUP_DATABASE%"
+if "%TREASURER_DATABASE%"=="" if "%LODGE_OFFICE_DATABASE%"=="" (
+  if exist "%LOCAL_DB_DIR%LodgeOffice.db" (
+    set "TREASURER_DATABASE=%LOCAL_DB_DIR%LodgeOffice.db"
+  ) else if exist "%LOCAL_DB_DIR%Treasurer.db" (
+    set "TREASURER_DATABASE=%LOCAL_DB_DIR%Treasurer.db"
+  ) else (
+    set "TREASURER_DATABASE=%LOCAL_DB_DIR%LodgeOffice.db"
+  )
+)
 set "TEMP=%APP_DATA%\tmp"
 set "TMP=%TEMP%"
 
@@ -75,26 +87,50 @@ if defined TREASURER_BACKUP_DATABASE (
             set "TREASURER_BACKUP_FOLDER=%%~dpI"
         ) else (
             set "TREASURER_BACKUP_FOLDER=%%~fI"
-            set "TREASURER_BACKUP_DATABASE=%%~fI\Treasurer.backup.db"
+            set "TREASURER_BACKUP_DATABASE=%%~fI\LodgeOffice.backup.db"
         )
     )
 )
 
 if not defined TREASURER_BACKUP_FOLDER (
     if exist "%USERPROFILE%\Documents" (
-        set "TREASURER_BACKUP_FOLDER=%USERPROFILE%\Documents\Treasurer Backups"
+        if exist "%USERPROFILE%\Documents\Lodge Office Backups" (
+            set "TREASURER_BACKUP_FOLDER=%USERPROFILE%\Documents\Lodge Office Backups"
+        ) else if exist "%USERPROFILE%\Documents\Treasurer Backups" (
+            set "TREASURER_BACKUP_FOLDER=%USERPROFILE%\Documents\Treasurer Backups"
+        ) else (
+            set "TREASURER_BACKUP_FOLDER=%USERPROFILE%\Documents\Lodge Office Backups"
+        )
     ) else if defined OneDriveCommercial (
-        set "TREASURER_BACKUP_FOLDER=%OneDriveCommercial%\Treasurer Backups"
+        if exist "%OneDriveCommercial%\Lodge Office Backups" (
+            set "TREASURER_BACKUP_FOLDER=%OneDriveCommercial%\Lodge Office Backups"
+        ) else if exist "%OneDriveCommercial%\Treasurer Backups" (
+            set "TREASURER_BACKUP_FOLDER=%OneDriveCommercial%\Treasurer Backups"
+        ) else (
+            set "TREASURER_BACKUP_FOLDER=%OneDriveCommercial%\Lodge Office Backups"
+        )
     ) else if defined OneDriveConsumer (
-        set "TREASURER_BACKUP_FOLDER=%OneDriveConsumer%\Treasurer Backups"
+        if exist "%OneDriveConsumer%\Lodge Office Backups" (
+            set "TREASURER_BACKUP_FOLDER=%OneDriveConsumer%\Lodge Office Backups"
+        ) else if exist "%OneDriveConsumer%\Treasurer Backups" (
+            set "TREASURER_BACKUP_FOLDER=%OneDriveConsumer%\Treasurer Backups"
+        ) else (
+            set "TREASURER_BACKUP_FOLDER=%OneDriveConsumer%\Lodge Office Backups"
+        )
     ) else if defined OneDrive (
-        set "TREASURER_BACKUP_FOLDER=%OneDrive%\Treasurer Backups"
+        if exist "%OneDrive%\Lodge Office Backups" (
+            set "TREASURER_BACKUP_FOLDER=%OneDrive%\Lodge Office Backups"
+        ) else if exist "%OneDrive%\Treasurer Backups" (
+            set "TREASURER_BACKUP_FOLDER=%OneDrive%\Treasurer Backups"
+        ) else (
+            set "TREASURER_BACKUP_FOLDER=%OneDrive%\Lodge Office Backups"
+        )
     ) else (
-        set "TREASURER_BACKUP_FOLDER=%USERPROFILE%\Treasurer Backups"
+        set "TREASURER_BACKUP_FOLDER=%USERPROFILE%\Lodge Office Backups"
     )
 )
 
-if not defined TREASURER_BACKUP_DATABASE set "TREASURER_BACKUP_DATABASE=%TREASURER_BACKUP_FOLDER%\Treasurer.backup.db"
+if not defined TREASURER_BACKUP_DATABASE set "TREASURER_BACKUP_DATABASE=%TREASURER_BACKUP_FOLDER%\LodgeOffice.backup.db"
 
 set "TREASURER_BACKUP_FOLDER_CAPTURE=%TEMP%\treasurer_backup_folder.txt"
 set "TREASURER_BACKUP_DATABASE_CAPTURE=%TEMP%\treasurer_backup_database.txt"

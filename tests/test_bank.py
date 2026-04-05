@@ -590,7 +590,7 @@ class BankPageTestCase(unittest.TestCase):
 
     def test_backup_run_writes_mirrored_file(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            backup_path = Path(td) / "Treasurer.backup.db"
+            backup_path = Path(td) / "LodgeOffice.backup.db"
             self.app.config["BACKUP_DATABASE"] = str(backup_path)
             response = self.client.post("/backup/run")
             self.assertEqual(response.status_code, 302)

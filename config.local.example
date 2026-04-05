@@ -1,11 +1,13 @@
-# Copy to config.local next to start.bat (optional).
-# If you omit this file, the live database is Treasurer.db in the project folder.
+# Copy to `config.local` next to start.bat (optional). Not committed.
 
-# Optional — live database somewhere else on this laptop only:
-# TREASURER_DATABASE=D:\TreasurerData\Treasurer.db
+# Default if you omit this file: live DB is LodgeOffice.db in this folder (legacy Treasurer.db still used if present);
+# mirrored backup defaults under Documents/Lodge Office Backups or legacy Treasurer Backups — see start.bat.
 
-# Optional — mirrored backup file or folder (Settings can also set this):
-# TREASURER_BACKUP_DATABASE=C:\Users\YourName\Documents\Treasurer Backups\Treasurer.backup.db
+# TREASURER_DATABASE=C:\Users\You\Documents\Code\lodge-office\LodgeOffice.db
+# TREASURER_BACKUP_DATABASE=C:\Users\You\Documents\Code\lodge-office\backups\LodgeOffice.backup.db
+# Optional aliases: LODGE_OFFICE_DATABASE, LODGE_OFFICE_BACKUP_DATABASE
 
-# Optional — set to 1 so only one app instance uses the database at a time (recommended):
+# Optional — for a DB on a network share, set TREASURER_DATABASE to your UNC path.
+
+# Optional — single-instance lock (recommended on one laptop):
 # TREASURER_RUNTIME_LOCK=1

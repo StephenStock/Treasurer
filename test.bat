@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 if "%LOCALAPPDATA%"=="" set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
-set "APP_DATA=%LOCALAPPDATA%\Treasurer"
+set "APP_DATA=%LOCALAPPDATA%\LodgeOffice"
 set "TEMP=%APP_DATA%\tmp"
 set "TMP=%TEMP%"
 

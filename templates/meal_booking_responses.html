@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Responses: {{ event.title }} | Lodge Office{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Responses: {{ event.title }}</h3>
+        <p class="section-note">
+          <a href="{{ url_for('main.meal_bookings_list') }}">← All meal bookings</a>
+          ·
+          <a href="{{ url_for('main.meal_booking_setup', event_id=event.id) }}">Setup &amp; link</a>
+        </p>
+      </div>
+    </div>
+
+    {% set course_labels = {'starter': 'Starter', 'main': 'Main', 'dessert': 'Dessert'} %}
+
+    <div class="table-scroll">
+      <table class="statement-table compact-ledger meal-responses-table">
+        <thead>
+          <tr>
+            <th>Submitted</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Guests</th>
+            <th>Member: {{ course_labels['starter'] }}</th>
+            <th>Member: {{ course_labels['main'] }}</th>
+            <th>Member: {{ course_labels['dessert'] }}</th>
+            <th>Guest choices</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in responses %}
+            {% set ch = r.choices %}
+            {% set mem = ch.get('member', {}) %}
+            <tr>
+              <td class="section-note">{{ r.submitted_at }}</td>
+              <td>{{ r.respondent_name }}</td>
+              <td>{{ r.respondent_email or "—" }}</td>
+              <td class="money-cell">{{ r.guest_count }}</td>
+              <td>{{ fmt_choice(mem.get('starter')) }}</td>
+              <td>{{ fmt_choice(mem.get('main')) }}</td>
+              <td>{{ fmt_choice(mem.get('dessert')) }}</td>
+              <td class="meal-guest-choices-cell">
+                {% if ch.get('guests') %}
+                  <ul class="meal-guest-choices-list">
+                    {% for g in ch.get('guests', []) %}
+                      <li>
+                        <strong>{{ g.get('name', '?') }}</strong>:
+                        {{ fmt_choice(g.get('starter')) }},
+                        {{ fmt_choice(g.get('main')) }},
+                        {{ fmt_choice(g.get('dessert')) }}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="muted-text">No responses yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

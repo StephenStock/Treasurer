@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Meal booking setup | Lodge Office{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>{{ event.title }}</h3>
+        <p class="section-note">
+          <a href="{{ url_for('main.meal_bookings_list') }}">← All meal bookings</a>
+          ·
+          <a href="{{ url_for('main.meal_booking_responses', event_id=event.id) }}">View responses</a>
+        </p>
+      </div>
+    </div>
+
+    <div class="meal-booking-public-url">
+      <label class="settings-field">
+        <span class="settings-label">Public link (copy and share)</span>
+        <input type="text" readonly class="meal-booking-url-input" value="{{ public_booking_url }}" onclick="this.select()" aria-label="Public booking URL">
+      </label>
+      <p class="section-note">Anyone with this link can submit choices without signing in. It does not show the rest of Lodge Office (signed-in areas).</p>
+    </div>
+
+    <form method="post" class="meal-booking-setup-form">
+      <h4 class="public-meal-h4">Details</h4>
+      <div class="meal-booking-create-grid">
+        <label class="settings-field">
+          <span class="settings-label">Title</span>
+          <input type="text" name="title" value="{{ event.title }}" required>
+        </label>
+        <label class="settings-field">
+          <span class="settings-label">Meal date</span>
+          <input type="date" name="meal_date" value="{{ event.meal_date or '' }}">
+        </label>
+        <label class="settings-field settings-field-grow">
+          <span class="settings-label">Notes for members</span>
+          <input type="text" name="notes" value="{{ event.notes or '' }}" placeholder="Shown on the public form">
+        </label>
+        <label class="settings-field settings-checkbox-field">
+          <span class="settings-label">Accept new responses</span>
+          <input type="checkbox" name="is_open" value="1" {% if event.is_open %}checked{% endif %}>
+        </label>
+      </div>
+
+      {% set course_labels = {'starter': 'Starter', 'main': 'Main course', 'dessert': 'Dessert'} %}
+      {% for c in courses %}
+        <div class="meal-setup-course-block">
+          <h4 class="public-meal-h4">{{ course_labels[c] }}</h4>
+          <p class="section-note">Add each dish option. Mark <strong>Vegetarian option</strong> for alternative veg choices.</p>
+          <div class="meal-setup-option-rows">
+            {% for opt in options_by_course[c] %}
+              <div class="meal-setup-option-row">
+                <input type="text" name="{{ c }}_label" value="{{ opt.label }}" placeholder="Dish name" aria-label="{{ course_labels[c] }} option">
+                <select name="{{ c }}_veg" aria-label="Vegetarian option">
+                  <option value="0" {% if not opt.is_vegetarian %}selected{% endif %}>Standard</option>
+                  <option value="1" {% if opt.is_vegetarian %}selected{% endif %}>Vegetarian option</option>
+                </select>
+              </div>
+            {% endfor %}
+            {% for _ in range(5) %}
+              <div class="meal-setup-option-row">
+                <input type="text" name="{{ c }}_label" value="" placeholder="Add another…" aria-label="{{ course_labels[c] }} option">
+                <select name="{{ c }}_veg" aria-label="Vegetarian option">
+                  <option value="0" selected>Standard</option>
+                  <option value="1">Vegetarian option</option>
+                </select>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <div class="meal-booking-setup-actions">
+        <button type="submit" class="button button-secondary">Save</button>
+      </div>
+    </form>
+
+    <form method="post" class="meal-booking-danger-form" onsubmit="return confirm('Generate a new link? The old link will stop working.');">
+      <input type="hidden" name="action" value="regenerate_token">
+      <button type="submit" class="button button-secondary">Regenerate public link</button>
+    </form>
+
+    <form method="post" class="meal-booking-danger-form" onsubmit="return confirm('Delete this meal booking and all responses?');">
+      <input type="hidden" name="action" value="delete">
+      <button type="submit" class="button button-secondary">Delete meal booking</button>
+    </form>
+  </section>
+{% endblock %}

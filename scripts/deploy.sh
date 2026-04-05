@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy Treasurer from a git checkout on the server (see docs/Runbook-Hetzner.md).
+# Deploy Lodge Office from a git checkout on the server (see docs/Runbook-Hetzner.md).
 #
 # Usage (from anywhere):
 #   bash /opt/treasurer/scripts/deploy.sh

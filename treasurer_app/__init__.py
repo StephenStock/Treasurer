@@ -66,7 +66,9 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("SECRET_KEY", "change-me"),
         DATABASE=str(default_database_path()),
-        BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", "")),
+        BACKUP_DATABASE=str(
+            os.environ.get("TREASURER_BACKUP_DATABASE") or os.environ.get("LODGE_OFFICE_BACKUP_DATABASE") or ""
+        ),
         RUNTIME_LOCK_ENABLED=os.environ.get("TREASURER_RUNTIME_LOCK", "").strip().lower() in {"1", "true", "yes", "on"},
         MAX_CONTENT_LENGTH=MAX_BANK_IMPORT_REQUEST_BYTES,
         LOGIN_DISABLED=os.environ.get("TREASURER_LOGIN_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"},
@@ -215,6 +217,8 @@ def create_app(test_config: dict | None = None) -> Flask:
             return None
         if request.endpoint == "main.healthz":
             return None
+        if request.endpoint == "main.public_meal_booking":
+            return None
         if not current_user.is_authenticated:
             return redirect(url_for("auth.login", next=request.url))
         return None
@@ -245,7 +249,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         )
         if (request.path or "").startswith("/bank"):
             return redirect(url_for("main.bank"))
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("main.portal"))
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
@@ -280,21 +284,22 @@ def create_app(test_config: dict | None = None) -> Flask:
             except Exception as exc:
                 _record_backup_mirror_failure(app, exc, detail="Initial backup after schema check failed.")
 
-            if not app.config.get("TESTING"):
-                from .auth_store import count_users, create_user_row, fetch_user_by_email
+        # First admin bootstrap: must run after init_db() as well as on existing DBs (was previously only in the else branch, so fresh DBs never got a bootstrap user).
+        if not app.config.get("TESTING"):
+            from .auth_store import count_users, create_user_row, fetch_user_by_email
 
-                bootstrap_email = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_EMAIL", "").strip()
-                bootstrap_password = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_PASSWORD", "")
-                min_pw = int(app.config.get("PASSWORD_MIN_LENGTH", 8))
-                if bootstrap_email and "@" in bootstrap_email and len(bootstrap_password) >= min_pw and count_users(db) == 0:
-                    role_row = db.execute("SELECT id FROM roles WHERE code = 'ADMIN'").fetchone()
-                    if role_row and fetch_user_by_email(db, bootstrap_email) is None:
-                        create_user_row(
-                            db,
-                            bootstrap_email,
-                            generate_password_hash(bootstrap_password),
-                            int(role_row["id"]),
-                        )
-                        db.commit()
+            bootstrap_email = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_EMAIL", "").strip()
+            bootstrap_password = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_PASSWORD", "")
+            min_pw = int(app.config.get("PASSWORD_MIN_LENGTH", 8))
+            if bootstrap_email and "@" in bootstrap_email and len(bootstrap_password) >= min_pw and count_users(db) == 0:
+                role_row = db.execute("SELECT id FROM roles WHERE code = 'ADMIN'").fetchone()
+                if role_row and fetch_user_by_email(db, bootstrap_email) is None:
+                    create_user_row(
+                        db,
+                        bootstrap_email,
+                        generate_password_hash(bootstrap_password),
+                        int(role_row["id"]),
+                    )
+                    db.commit()
 
     return app

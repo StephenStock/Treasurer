@@ -100,8 +100,106 @@ body {
   width: 100%;
 }
 
+.site-header-brand-cluster {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-width: 0;
+  flex: 1;
+}
+
 .site-header-brand {
   min-width: 0;
+}
+
+/* App launcher (waffle) */
+.app-launcher {
+  position: relative;
+  flex-shrink: 0;
+  padding-top: 0.15rem;
+}
+
+.app-launcher-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--nav-border);
+  border-radius: 6px;
+  background: var(--nav-link-bg);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.app-launcher-trigger:hover,
+.app-launcher-trigger[aria-expanded='true'] {
+  background: var(--nav-hover-bg);
+}
+
+.app-launcher-dots {
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  grid-template-rows: repeat(3, 4px);
+  gap: 3px;
+}
+
+.app-launcher-dots span {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.app-launcher-panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 120;
+  min-width: 15rem;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: 0.5rem 0;
+  margin: 0;
+  list-style: none;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px var(--shadow);
+}
+
+.app-launcher-panel[hidden] {
+  display: none !important;
+}
+
+.app-launcher-heading {
+  margin: 0 0 0.35rem;
+  padding: 0 0.85rem;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.app-launcher-item {
+  display: block;
+  padding: 0.45rem 0.85rem;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  font-size: 0.92rem;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.app-launcher-item:hover,
+.app-launcher-item:focus-visible {
+  background: var(--nav-hover-bg);
+  outline: none;
 }
 
 .site-header-user {
@@ -850,6 +948,40 @@ button,
   font-weight: 600;
 }
 
+/* Portal landing (B) */
+.portal-landing .portal-apps-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  margin-top: 0.75rem;
+}
+
+.portal-app-card {
+  padding: 1rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card-surface);
+}
+
+.portal-app-card--primary {
+  border-color: rgb(var(--rgb-accent) / 0.45);
+  background: linear-gradient(165deg, rgb(var(--rgb-accent) / 0.12), var(--card-surface));
+}
+
+.portal-app-card--muted {
+  opacity: 0.92;
+}
+
+.portal-app-card h4 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.portal-app-card-desc {
+  margin: 0 0 0.85rem;
+  line-height: 1.45;
+}
+
 .bank-panel {
   padding-top: 0.85rem;
 }
@@ -1165,11 +1297,15 @@ table {
 }
 
 .auditors-date-col {
-  width: 13%;
+  width: 11%;
+}
+
+.auditors-type-col {
+  width: 12%;
 }
 
 .auditors-details-col {
-  width: 58%;
+  width: 46%;
 }
 
 .auditors-category-col {
@@ -2706,4 +2842,147 @@ th {
   .member-edit-form {
     width: 100%;
   }
+}
+
+/* --- Public meal booking (no app chrome) --- */
+.public-meal-booking-body {
+  min-height: 100vh;
+}
+
+.public-meal-shell {
+  max-width: 40rem;
+}
+
+.public-meal-panel .public-meal-eyebrow {
+  margin-bottom: 0.25rem;
+}
+
+.public-meal-notes {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.public-meal-h3 {
+  margin: 1.5rem 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.public-meal-h4 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.public-meal-veg-tag {
+  color: #7cb87c;
+  font-weight: 500;
+}
+
+.meal-course-fieldset {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.meal-course-fieldset legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+}
+
+.meal-radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.meal-radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.guest-slots {
+  margin-top: 1rem;
+}
+
+.guest-slot {
+  padding: 1rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.guest-slot:last-child {
+  border-bottom: none;
+}
+
+.public-meal-actions {
+  margin-top: 1.5rem;
+}
+
+.meal-booking-create-form {
+  margin-top: 1rem;
+}
+
+.meal-booking-create-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.meal-booking-create-grid .settings-field {
+  min-width: 12rem;
+}
+
+.meal-booking-public-url .meal-booking-url-input {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.meal-setup-course-block {
+  margin: 1.5rem 0;
+}
+
+.meal-setup-option-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.meal-setup-option-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.meal-setup-option-row input[type="text"] {
+  flex: 1 1 14rem;
+  min-width: 10rem;
+}
+
+.meal-booking-setup-actions {
+  margin: 1.5rem 0 1rem;
+}
+
+.meal-booking-danger-form {
+  margin: 1rem 0;
+}
+
+.meal-responses-table {
+  min-width: 960px;
+}
+
+.meal-guest-choices-cell {
+  max-width: 22rem;
+  vertical-align: top;
+}
+
+.meal-guest-choices-list {
+  margin: 0;
+  padding-left: 1.1rem;
 }

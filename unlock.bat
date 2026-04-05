@@ -2,15 +2,27 @@
 cd /d "%~dp0"
 
 if "%LOCALAPPDATA%"=="" set "LOCALAPPDATA=%USERPROFILE%\AppData\Local"
-set "APP_DATA=%LOCALAPPDATA%\Treasurer"
+set "APP_DATA=%LOCALAPPDATA%\LodgeOffice"
 set "LOCAL_DB_DIR=%~dp0"
 if exist "%~dp0config.local" (
     for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%~dp0config.local") do (
         if /i "%%A"=="TREASURER_DATABASE" if not defined TREASURER_DATABASE set "TREASURER_DATABASE=%%B"
+        if /i "%%A"=="LODGE_OFFICE_DATABASE" if not defined LODGE_OFFICE_DATABASE set "LODGE_OFFICE_DATABASE=%%B"
         if /i "%%A"=="TREASURER_BACKUP_DATABASE" if not defined TREASURER_BACKUP_DATABASE set "TREASURER_BACKUP_DATABASE=%%B"
+        if /i "%%A"=="LODGE_OFFICE_BACKUP_DATABASE" if not defined LODGE_OFFICE_BACKUP_DATABASE set "LODGE_OFFICE_BACKUP_DATABASE=%%B"
     )
 )
-if "%TREASURER_DATABASE%"=="" set "TREASURER_DATABASE=%LOCAL_DB_DIR%\Treasurer.db"
+if not defined TREASURER_DATABASE if defined LODGE_OFFICE_DATABASE set "TREASURER_DATABASE=%LODGE_OFFICE_DATABASE%"
+if not defined TREASURER_BACKUP_DATABASE if defined LODGE_OFFICE_BACKUP_DATABASE set "TREASURER_BACKUP_DATABASE=%LODGE_OFFICE_BACKUP_DATABASE%"
+if "%TREASURER_DATABASE%"=="" if "%LODGE_OFFICE_DATABASE%"=="" (
+  if exist "%LOCAL_DB_DIR%LodgeOffice.db" (
+    set "TREASURER_DATABASE=%LOCAL_DB_DIR%LodgeOffice.db"
+  ) else if exist "%LOCAL_DB_DIR%Treasurer.db" (
+    set "TREASURER_DATABASE=%LOCAL_DB_DIR%Treasurer.db"
+  ) else (
+    set "TREASURER_DATABASE=%LOCAL_DB_DIR%LodgeOffice.db"
+  )
+)
 set "TEMP=%APP_DATA%\tmp"
 set "TMP=%TEMP%"
 

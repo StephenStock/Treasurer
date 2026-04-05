@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Bank | Treasurer Portal{% endblock %}
+{% block title %}Bank | Lodge Office{% endblock %}
 
 {% macro bank_category_select_options(selected_category_id=none) -%}
   {% for direction, group in ledger_categories|groupby('direction') %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Auditors | Treasurer Portal{% endblock %}
+{% block title %}Auditors | Lodge Office{% endblock %}
 
 {% block extra_head %}
   <style>
@@ -278,7 +278,7 @@
     <div class="panel-heading">
       <div>
         <h3>Account Histories</h3>
-        <p class="section-note">Full transaction history for each lodge account, showing every allocated bank and cash entry behind the totals.</p>
+        <p class="section-note">Full activity for each lodge account: bank, cash, sub-account transfers, and prepayments (where applicable), in date order.</p>
       </div>
     </div>
 
@@ -303,6 +303,7 @@
             <table class="statement-table compact-ledger auditors-history-table">
               <colgroup>
                 <col class="auditors-date-col">
+                <col class="auditors-type-col">
                 <col class="auditors-details-col">
                 <col class="auditors-category-col">
                 <col class="auditors-income-col">
@@ -312,6 +313,7 @@
               <thead>
                 <tr>
                   <th>Date</th>
+                  <th>Type</th>
                   <th>Details</th>
                   <th>Category</th>
                   <th class="money-cell">Income</th>
@@ -324,10 +326,11 @@
                   {% for entry in account.entries %}
                     <tr>
                       <td>{{ entry.transaction_date or '' }}</td>
+                      <td class="section-note">{{ entry.transaction_type or '' }}</td>
                       <td class="auditors-entry-details">{{ entry.details }}</td>
                       <td class="auditors-entry-category">{{ entry.category_name }}</td>
-                      <td class="money-cell">{% if entry.direction == 'in' %}&pound;{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
-                      <td class="money-cell">{% if entry.direction == 'out' %}&pound;{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
+                      <td class="money-cell">{% if entry.direction in ['in', 'transfer_in'] %}&pound;{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
+                      <td class="money-cell">{% if entry.direction in ['out', 'transfer_out'] %}&pound;{{ "%.2f"|format(entry.amount) }}{% endif %}</td>
                       <td class="money-cell">
                         {% if entry.running_total is defined %}
                           &pound;{{ "%.2f"|format(entry.running_total) }}
@@ -337,7 +340,7 @@
                   {% endfor %}
                 {% else %}
                   <tr>
-                    <td colspan="6">No activity recorded for this account.</td>
+                    <td colspan="7">No activity recorded for this account.</td>
                   </tr>
                 {% endif %}
               </tbody>

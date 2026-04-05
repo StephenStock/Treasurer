@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Meal bookings | Lodge Office{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Meal bookings</h3>
+        <p class="section-note">
+          Create a menu for each lodge dinner, share the public link with members (no password needed on the form).
+          The main app stays behind sign-in; only people with the secret link can open the booking page.
+        </p>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('main.meal_bookings_list') }}" class="meal-booking-create-form">
+      <h4 class="public-meal-h4">New meal booking</h4>
+      <div class="meal-booking-create-grid">
+        <label class="settings-field">
+          <span class="settings-label">Title</span>
+          <input type="text" name="title" required placeholder="e.g. March 2026 installation dinner">
+        </label>
+        <label class="settings-field">
+          <span class="settings-label">Meal date (optional)</span>
+          <input type="date" name="meal_date">
+        </label>
+        <label class="settings-field settings-field-grow">
+          <span class="settings-label">Notes for members (optional)</span>
+          <input type="text" name="notes" placeholder="e.g. Dress code, arrival time">
+        </label>
+        <div class="settings-field">
+          <span class="settings-label">&nbsp;</span>
+          <button type="submit" class="button button-secondary">Create</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel statement-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Existing bookings</h3>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="statement-table compact-ledger">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Date</th>
+            <th>Open</th>
+            <th class="money-cell">Responses</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in events %}
+            <tr>
+              <td>{{ e.title }}</td>
+              <td>{{ e.meal_date or "—" }}</td>
+              <td>{% if e.is_open %}Yes{% else %}No{% endif %}</td>
+              <td class="money-cell">{{ e.response_count }}</td>
+              <td>
+                <a href="{{ url_for('main.meal_booking_setup', event_id=e.id) }}">Setup &amp; link</a>
+                ·
+                <a href="{{ url_for('main.meal_booking_responses', event_id=e.id) }}">Responses</a>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5" class="muted-text">No meal bookings yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

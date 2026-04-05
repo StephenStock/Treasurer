@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ selected_account.display_name }} | Sub Accounts | Treasurer Portal{% endblock %}
+{% block title %}{{ selected_account.display_name }} | Sub Accounts | Lodge Office{% endblock %}
 
 {% block content %}
   <section
@@ -43,8 +43,10 @@
   <section class="panel statement-panel">
     <div class="panel-heading">
       <div>
-        <h3>Ledger entries</h3>
-        <p class="section-note">Bank and cash lines allocated to this sub-account.</p>
+        <h3>Activity</h3>
+        <p class="section-note">
+          All movement for this sub-account in the current reporting period: bank, cash, sub-account transfers, and prepayments (where applicable), in date order.
+        </p>
       </div>
     </div>
 
@@ -53,6 +55,7 @@
         <thead>
           <tr>
             <th>Date</th>
+            <th>Type</th>
             <th>Details</th>
             <th>Category</th>
             <th>In</th>
@@ -63,7 +66,13 @@
           {% for entry in selected_account.entries %}
             <tr>
               <td>{{ entry.transaction_date or "-" }}</td>
-              <td>{{ entry.details }}</td>
+              <td class="section-note">{{ entry.transaction_type or "—" }}</td>
+              <td>
+                {{ entry.details }}
+                {% if entry.virtual_transfer_id %}
+                  <a href="#subaccount-transfer-{{ entry.virtual_transfer_id }}" class="section-note">Register</a>
+                {% endif %}
+              </td>
               <td>{{ entry.category_name }}</td>
               <td class="money-cell">{% if entry.direction in ['in', 'transfer_in'] %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
               <td class="money-cell">{% if entry.direction in ['out', 'transfer_out'] %}&pound;{{ "%.2f"|format(entry.amount) }}{% else %}-{% endif %}</td>
@@ -71,7 +80,7 @@
           {% endfor %}
           {% if not selected_account.entries %}
             <tr>
-              <td colspan="5" class="muted-text">No transactions are currently mapped to this sub-account.</td>
+              <td colspan="6" class="muted-text">No activity recorded for this sub-account in this period.</td>
             </tr>
           {% endif %}
         </tbody>
@@ -136,7 +145,7 @@
 
       <div class="settings-transfer-list">
         {% for t in account_transfers %}
-          <div class="settings-transfer-card">
+          <div class="settings-transfer-card" id="subaccount-transfer-{{ t.id }}">
             {% set is_out = (t.from_account_code == selected_account.code) %}
             <div class="subaccount-transfer-summary" aria-hidden="true">
               <span class="section-note">

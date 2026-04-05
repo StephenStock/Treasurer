@@ -1,0 +1,39 @@
+{# Waffle menu: quick links (mirrors portal cards; permission-gated). #}
+<div class="app-launcher" data-app-launcher>
+  <button
+    type="button"
+    class="app-launcher-trigger"
+    aria-expanded="false"
+    aria-controls="app-launcher-panel"
+    aria-haspopup="true"
+    aria-label="Apps and areas"
+  >
+    <span class="app-launcher-dots" aria-hidden="true">
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+      <span></span><span></span><span></span>
+    </span>
+  </button>
+  <div id="app-launcher-panel" class="app-launcher-panel" role="menu" hidden>
+    <p class="app-launcher-heading">Lodge Office</p>
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.portal') }}">Portal home</a>
+    {% if user_can('page_home') %}
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.dashboard') }}">Treasurer home</a>
+    {% endif %}
+    {% if user_can('page_statement') %}
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.statement') }}">Statement</a>
+    {% endif %}
+    {% if user_can('page_members') %}
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.members') }}">Members</a>
+    {% endif %}
+    {% if user_can('page_meal_bookings') %}
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.meal_bookings_list') }}">Meal bookings</a>
+    {% endif %}
+    {% if user_can('page_settings') %}
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.settings') }}">Settings</a>
+    {% endif %}
+    {% if user_can('page_help') %}
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.help_page') }}">Help</a>
+    {% endif %}
+  </div>
+</div>

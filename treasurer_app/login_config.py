@@ -78,7 +78,7 @@ def permission_required(permission_code: str):
                 return redirect(url_for("auth.login", next=request.url))
             if not user_can(permission_code):
                 flash("You don't have access to that area.", "error")
-                return redirect(url_for("main.dashboard"))
+                return redirect(url_for("main.portal"))
             return view_func(*args, **kwargs)
 
         return wrapped

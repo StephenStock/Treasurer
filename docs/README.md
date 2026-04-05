@@ -1,6 +1,6 @@
-# Project Docs
+# Project Docs (Lodge Office)
 
-This folder keeps the project manageable in small, well-scoped slices.
+This folder keeps the Lodge Office project manageable in small, well-scoped slices.
 
 ## How we use this
 

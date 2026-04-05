@@ -1,8 +1,8 @@
-# Treasurer — architecture (concise)
+# Lodge Office — architecture (concise)
 
 ## Purpose
 
-Single Flask application for lodge treasurer workflows (members, dues, bank/cash, statements). Deployed as a **small footprint** service for a handful of concurrent users.
+Single Flask application for lodge administration; **treasurer** workflows (members, dues, bank/cash, statements) are the main implemented surface today. Deployed as a **small footprint** service for a handful of concurrent users.
 
 ## Logical view
 
@@ -30,7 +30,7 @@ flowchart LR
 
 ## Security notes
 
-- **No built-in login** in the current app: treat network access (firewall, TLS, VPN, or IP allowlist) as the access-control layer until auth is added.
+- **Sign-in** (Flask-Login) is required for normal app pages; still treat network exposure seriously (TLS via Caddy, firewall, no direct exposure of the app port).
 - **SECRET_KEY** must be set in production (Docker `.env`).
 
 ## Related docs

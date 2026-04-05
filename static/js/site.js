@@ -789,3 +789,52 @@ document.querySelectorAll('[data-fill-input]').forEach((button) => {
     }
   });
 });
+
+const wireAppLauncher = () => {
+  const root = document.querySelector('[data-app-launcher]');
+  if (!root) {
+    return;
+  }
+  const btn = root.querySelector('.app-launcher-trigger');
+  const panel = root.querySelector('.app-launcher-panel');
+  if (!btn || !panel) {
+    return;
+  }
+
+  const close = () => {
+    panel.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+  };
+
+  const open = () => {
+    panel.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+  };
+
+  const toggle = () => {
+    if (panel.hidden) {
+      open();
+    } else {
+      close();
+    }
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggle();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!root.contains(e.target)) {
+      close();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      close();
+    }
+  });
+};
+
+wireAppLauncher();

@@ -29,6 +29,7 @@ PERMISSION_DEFINITIONS: list[tuple[str, str]] = [
     ("page_settings", "Settings"),
     ("page_help", "Help"),
     ("page_forms", "Forms"),
+    ("page_meal_bookings", "Meal bookings (setup & responses)"),
     ("admin_users", "Manage portal users"),
     ("admin_role_permissions", "Manage role permissions"),
     ("admin_table_editor", "Edit raw database tables (dangerous)"),

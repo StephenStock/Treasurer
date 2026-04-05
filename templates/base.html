@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#12151c">
-  <title>{% block title %}Treasurer Portal{% endblock %}</title>
+  <title>{% block title %}Lodge Office{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
   {% block extra_head %}{% endblock %}
 </head>
@@ -13,9 +13,11 @@
   <header class="site-header">
     <div class="site-header-top {% if active_page == 'balances' %}reports-open{% endif %}">
       <div class="site-header-main-line">
-        <div class="site-header-brand">
-          <p class="eyebrow">Treasurer Admin</p>
-          <h1>Treasurer</h1>
+        <div class="site-header-brand-cluster">
+          {% include "_app_launcher.html" %}
+          <div class="site-header-brand">
+          <p class="eyebrow">Lodge Office</p>
+          <h1>{% if active_page == 'portal' %}Portal{% else %}Treasurer{% endif %}</h1>
           <div class="site-header-user" aria-label="Account">
             {% if current_user.is_authenticated %}
               <span class="site-header-user-email">{{ current_user.email }}</span>
@@ -24,11 +26,13 @@
               <a class="site-header-user-link" href="{{ url_for('auth.login') }}">Sign in</a>
             {% endif %}
           </div>
+          </div>
         </div>
         <nav class="top-nav" aria-label="Primary">
           <div class="top-nav-row">
+            <a class="nav-link {% if active_page == 'portal' %}is-active{% endif %}" href="{{ url_for('main.portal') }}">Portal</a>
             {% if user_can('page_home') %}
-            <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Home</a>
+            <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Treasurer home</a>
             {% endif %}
             {% if user_can('page_statement') %}
             <a class="nav-link {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
@@ -56,6 +60,9 @@
             {% endif %}
             {% if user_can('page_settings') %}
             <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
+            {% endif %}
+            {% if user_can('page_meal_bookings') %}
+            <a class="nav-link {% if active_page == 'meal_bookings' %}is-active{% endif %}" href="{{ url_for('main.meal_bookings_list') }}">Meal bookings</a>
             {% endif %}
             {% if user_can('page_help') %}
             <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>

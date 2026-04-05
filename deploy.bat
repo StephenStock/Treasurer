@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-REM One-click deploy from Windows: runs bash scripts/deploy.sh on the Hetzner server over SSH.
+REM One-click deploy Lodge Office from Windows: runs bash scripts/deploy.sh on the Hetzner server over SSH.
 REM Requires: OpenSSH client (Windows 10/11: usually already installed), and SSH key or password to the server.
 REM
 REM Usage:

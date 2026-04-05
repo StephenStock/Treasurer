@@ -42,6 +42,7 @@ from .db import (
     consolidate_virtual_accounts,
     resolve_backup_folder_path,
     resolve_backup_database_path,
+    backup_folder_setting_unusable_on_this_runtime,
     resolve_mirror_backup_file_path,
     restore_database_from_backup,
     release_runtime_lock,
@@ -52,6 +53,19 @@ from .db import (
     _normalize_member_name,
     verify_sqlite_database_file,
     virtual_account_category_mappings,
+    MEAL_BOOKING_COURSES,
+    meal_booking_create_event,
+    meal_booking_delete_event,
+    meal_booking_get_event,
+    meal_booking_get_event_by_token,
+    meal_booking_insert_response,
+    meal_booking_list_events,
+    meal_booking_list_responses,
+    meal_booking_option_label_map,
+    meal_booking_options_for_event,
+    meal_booking_regenerate_public_token,
+    meal_booking_replace_options,
+    meal_booking_update_event,
 )
 from .auth_store import (
     create_user_row,
@@ -64,7 +78,7 @@ from .auth_store import (
     update_user_password,
     update_user_role,
 )
-from .login_config import permission_required
+from .login_config import permission_required, user_can
 from . import table_admin as ta
 
 main_bp = Blueprint("main", __name__)
@@ -876,6 +890,8 @@ def _backup_folder_form_value(db) -> str:
     if not raw:
         return ""
     raw = str(raw).strip()
+    if backup_folder_setting_unusable_on_this_runtime(raw):
+        return ""
     if raw.lower().endswith(".db"):
         return str(Path(raw).parent)
     return raw
@@ -897,6 +913,17 @@ def _runtime_lock_context():
 
 
 @main_bp.route("/")
+def portal():
+    """Role-agnostic landing: app launcher and entry points (treasurer-heavy today)."""
+    db = get_db()
+    return render_template(
+        "portal.html",
+        active_page="portal",
+        lodge_display_name=_lodge_display_name(db),
+    )
+
+
+@main_bp.route("/home")
 @permission_required("page_home")
 def dashboard():
     db = get_db()
@@ -977,7 +1004,7 @@ def restore_backup():
 
     if not backup_path.exists():
         flash("No backup file was found to restore from.", "error")
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("main.settings"))
 
     db.commit()
     close_db()
@@ -987,10 +1014,10 @@ def restore_backup():
         current_app.config["BACKUP_DATABASE"] = str(resolve_backup_database_path(database_path))
     except Exception:
         flash("The backup could not be restored.", "error")
-        return redirect(url_for("main.dashboard"))
+        return redirect(url_for("main.settings"))
 
     flash("Local database restored from the mirrored backup.", "success")
-    return redirect(url_for("main.dashboard"))
+    return redirect(url_for("main.settings"))
 
 
 DATABASE_UPLOAD_MAX_BYTES = 128 * 1024 * 1024
@@ -1017,7 +1044,7 @@ def download_database():
     response = send_file(
         tmp_fp,
         as_attachment=True,
-        download_name=f"Treasurer-{stamp}.db",
+        download_name=f"LodgeOffice-{stamp}.db",
         mimetype="application/vnd.sqlite3",
         max_age=0,
     )
@@ -1971,11 +1998,13 @@ def help_page():
 @main_bp.route("/forms")
 @permission_required("page_forms")
 def forms():
+    if user_can("page_meal_bookings"):
+        return redirect(url_for("main.meal_bookings_list"))
     return render_template(
         "placeholder.html",
         active_page="forms",
         title="Public Forms",
-        intro="This will become the public-facing forms area for lodge requests and member workflows.",
+        intro="Meal bookings are under Meal bookings in the nav (if your role has access). Other public forms can be added here later.",
     )
 
 
@@ -2492,3 +2521,258 @@ def balance_transfer_delete(account_code: str, transfer_id: int):
     db.commit()
     flash("Transfer removed.", "success")
     return redirect(_balance_subaccount_transfers_redirect(ac))
+
+
+def _meal_safe_int(val: object) -> int | None:
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
+def _meal_booking_collect_options_from_setup_form(form) -> list[tuple[str, str, int, bool]]:
+    rows: list[tuple[str, str, int, bool]] = []
+    for course in MEAL_BOOKING_COURSES:
+        labels = form.getlist(f"{course}_label")
+        vegs = form.getlist(f"{course}_veg")
+        while len(vegs) < len(labels):
+            vegs.append("0")
+        for j, lab in enumerate(labels):
+            lab = (lab or "").strip()
+            if not lab:
+                continue
+            veg_raw = vegs[j] if j < len(vegs) else "0"
+            is_veg = str(veg_raw).strip() in {"1", "on", "true", "yes"}
+            rows.append((course, lab, j, is_veg))
+    return rows
+
+
+def _meal_booking_validate_submission(
+    form,
+    valid_by_course: dict[str, set[int]],
+) -> tuple[dict[str, object] | None, str | None]:
+    member: dict[str, int] = {}
+    for c in MEAL_BOOKING_COURSES:
+        oid = _meal_safe_int(form.get(f"m_{c}"))
+        if oid is None:
+            return None, f"Choose a {c.replace('_', ' ')} for yourself."
+        allowed = valid_by_course.get(c, set())
+        if oid not in allowed:
+            return None, "That menu choice is not valid for this meal."
+        member[c] = oid
+    raw_gc = form.get("guest_count", "0")
+    try:
+        guest_count = max(0, min(10, int(str(raw_gc).strip() or "0")))
+    except ValueError:
+        return None, "Number of guests must be a whole number."
+    guests: list[dict[str, object]] = []
+    for i in range(1, guest_count + 1):
+        gname = (form.get(f"g{i}_name") or "").strip()
+        if not gname:
+            return None, f"Enter a name for guest {i}, or reduce the number of guests."
+        gdict: dict[str, object] = {"name": gname}
+        for c in MEAL_BOOKING_COURSES:
+            oid = _meal_safe_int(form.get(f"g{i}_{c}"))
+            if oid is None:
+                return None, f"Choose {c.replace('_', ' ')} for guest {i}."
+            if oid not in valid_by_course.get(c, set()):
+                return None, "That menu choice is not valid for this meal."
+            gdict[c] = oid
+        guests.append(gdict)
+    return {"member": member, "guests": guests}, None
+
+
+@main_bp.route("/meal-booking/<token>", methods=["GET", "POST"])
+def public_meal_booking(token: str):
+    """Public meal choice form; token is an unguessable secret (not a login)."""
+    db = get_db()
+    event = meal_booking_get_event_by_token(db, token)
+    if event is None:
+        return render_template("public_meal_booking_gone.html"), 404
+
+    event_id = int(event["id"])
+    options_by_course = meal_booking_options_for_event(db, event_id)
+    has_options = all(len(options_by_course.get(c, [])) > 0 for c in MEAL_BOOKING_COURSES)
+    is_open = bool(event["is_open"])
+
+    if request.method == "POST":
+        if not is_open:
+            flash("This meal booking is no longer accepting responses.", "error")
+            return redirect(url_for("main.public_meal_booking", token=token))
+        if not has_options:
+            flash("Menu choices are not ready yet. Please try again later.", "error")
+            return redirect(url_for("main.public_meal_booking", token=token))
+
+        name = (request.form.get("respondent_name") or "").strip()
+        if not name or len(name) > 200:
+            flash("Enter your name (required).", "error")
+            return redirect(url_for("main.public_meal_booking", token=token))
+        email = (request.form.get("respondent_email") or "").strip() or None
+
+        valid_by_course: dict[str, set[int]] = {}
+        for c in MEAL_BOOKING_COURSES:
+            valid_by_course[c] = {int(o["id"]) for o in options_by_course.get(c, [])}
+
+        choices, err = _meal_booking_validate_submission(request.form, valid_by_course)
+        if err or choices is None:
+            flash(err or "Could not save your choices.", "error")
+            return redirect(url_for("main.public_meal_booking", token=token))
+
+        guest_count = len(choices["guests"])
+        meal_booking_insert_response(
+            db,
+            event_id=event_id,
+            respondent_name=name,
+            respondent_email=email,
+            guest_count=guest_count,
+            choices=choices,
+        )
+        db.commit()
+        return render_template(
+            "public_meal_booking_thanks.html",
+            event_title=event["title"],
+        )
+
+    course_labels = {
+        "starter": "Starter",
+        "main": "Main course",
+        "dessert": "Dessert",
+    }
+    return render_template(
+        "public_meal_booking.html",
+        event=event,
+        options_by_course=options_by_course,
+        courses=MEAL_BOOKING_COURSES,
+        course_labels=course_labels,
+        has_options=has_options,
+        is_open=is_open,
+        max_guests=10,
+    )
+
+
+@main_bp.route("/meal-bookings", methods=["GET", "POST"])
+@permission_required("page_meal_bookings")
+def meal_bookings_list():
+    db = get_db()
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        if not title:
+            flash("Title is required.", "error")
+            return redirect(url_for("main.meal_bookings_list"))
+        meal_date = (request.form.get("meal_date") or "").strip() or None
+        notes = (request.form.get("notes") or "").strip() or None
+        event_id, _tok = meal_booking_create_event(
+            db,
+            title=title,
+            meal_date=meal_date,
+            notes=notes,
+        )
+        db.commit()
+        flash("Meal booking created. Add menu choices on the next screen.", "success")
+        return redirect(url_for("main.meal_booking_setup", event_id=event_id))
+
+    events = meal_booking_list_events(db)
+    return render_template(
+        "meal_bookings_list.html",
+        active_page="meal_bookings",
+        events=events,
+    )
+
+
+@main_bp.route("/meal-bookings/<int:event_id>/setup", methods=["GET", "POST"])
+@permission_required("page_meal_bookings")
+def meal_booking_setup(event_id: int):
+    db = get_db()
+    event = meal_booking_get_event(db, event_id)
+    if event is None:
+        flash("That meal booking was not found.", "error")
+        return redirect(url_for("main.meal_bookings_list"))
+
+    if request.method == "POST":
+        if request.form.get("action") == "regenerate_token":
+            new_tok = meal_booking_regenerate_public_token(db, event_id)
+            db.commit()
+            if new_tok:
+                flash("A new public link has been generated. The old link no longer works.", "success")
+            return redirect(url_for("main.meal_booking_setup", event_id=event_id))
+
+        if request.form.get("action") == "delete":
+            meal_booking_delete_event(db, event_id)
+            db.commit()
+            flash("Meal booking deleted.", "success")
+            return redirect(url_for("main.meal_bookings_list"))
+
+        title = (request.form.get("title") or "").strip()
+        if not title:
+            flash("Title is required.", "error")
+            return redirect(url_for("main.meal_booking_setup", event_id=event_id))
+        meal_date = (request.form.get("meal_date") or "").strip() or None
+        notes = (request.form.get("notes") or "").strip() or None
+        is_open = request.form.get("is_open") == "1"
+        meal_booking_update_event(
+            db,
+            event_id=event_id,
+            title=title,
+            meal_date=meal_date,
+            notes=notes,
+            is_open=is_open,
+        )
+        rows = _meal_booking_collect_options_from_setup_form(request.form)
+        meal_booking_replace_options(db, event_id, rows)
+        db.commit()
+        flash("Meal booking saved.", "success")
+        return redirect(url_for("main.meal_booking_setup", event_id=event_id))
+
+    options_by_course = meal_booking_options_for_event(db, event_id)
+    base = request.host_url.rstrip("/")
+    public_booking_url = f"{base}{url_for('main.public_meal_booking', token=event['public_token'])}"
+    return render_template(
+        "meal_booking_setup.html",
+        active_page="meal_bookings",
+        event=event,
+        options_by_course=options_by_course,
+        courses=MEAL_BOOKING_COURSES,
+        public_booking_url=public_booking_url,
+    )
+
+
+@main_bp.route("/meal-bookings/<int:event_id>/responses")
+@permission_required("page_meal_bookings")
+def meal_booking_responses(event_id: int):
+    db = get_db()
+    event = meal_booking_get_event(db, event_id)
+    if event is None:
+        flash("That meal booking was not found.", "error")
+        return redirect(url_for("main.meal_bookings_list"))
+
+    responses = meal_booking_list_responses(db, event_id)
+    label_map = meal_booking_option_label_map(db, event_id)
+
+    def _fmt_choice(oid: object) -> str:
+        if oid is None:
+            return "—"
+        try:
+            oid_i = int(oid)
+        except (TypeError, ValueError):
+            return str(oid)
+        row = label_map.get(oid_i)
+        if not row:
+            return f"#{oid_i}"
+        label = str(row["label"])
+        if row.get("is_vegetarian"):
+            return f"{label} (veg)"
+        return label
+
+    return render_template(
+        "meal_booking_responses.html",
+        active_page="meal_bookings",
+        event=event,
+        responses=responses,
+        courses=MEAL_BOOKING_COURSES,
+        fmt_choice=_fmt_choice,
+    )

@@ -13,9 +13,9 @@ def record_failure(app: Any, exc: BaseException | None = None, detail: str | Non
         datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     )
     if exc is not None:
-        app.logger.error("Treasurer backup mirror failed: %s", msg, exc_info=exc)
+        app.logger.error("Lodge Office backup mirror failed: %s", msg, exc_info=exc)
     else:
-        app.logger.error("Treasurer backup mirror failed: %s", msg)
+        app.logger.error("Lodge Office backup mirror failed: %s", msg)
 
 
 def clear_failure(app: Any) -> None:

@@ -10,6 +10,7 @@ from treasurer_app.db import (
     ensure_financial_tables,
     init_db,
     list_virtual_account_transfers_for_account,
+    virtual_account_report,
 )
 from treasurer_app.auth_routes import auth_bp
 from treasurer_app.login_config import init_login_manager, user_can
@@ -131,6 +132,47 @@ class VirtualTransfersSettingsTestCase(unittest.TestCase):
         self.assertEqual(rv.status_code, 200)
         self.assertIn(b"sub-account-transfers", rv.data)
         self.assertIn(b"Transfer register", rv.data)
+
+    def test_virtual_account_report_merges_transfers_into_activity(self) -> None:
+        period_id = self._reporting_period_id()
+        self._account_ids()
+
+        self.client.post(
+            "/balances/MAIN/transfers/add",
+            data={
+                "direction": "out",
+                "other_account_code": "CENTENARY",
+                "amount": "100.50",
+                "transfer_date": "2026-04-01",
+                "description": "Test move",
+                "notes": "",
+            },
+        )
+
+        report = virtual_account_report(self.db, period_id)
+        main = next(a for a in report if a["code"] == "MAIN")
+        xfer_main = [
+            e
+            for e in main["entries"]
+            if e.get("transaction_type") == "Sub-account transfer"
+            and "Test move" in (e.get("details") or "")
+        ]
+        self.assertEqual(len(xfer_main), 1)
+        self.assertEqual(xfer_main[0]["direction"], "transfer_out")
+        self.assertEqual(float(xfer_main[0]["amount"]), 100.5)
+        self.assertIn("Centenary", xfer_main[0]["details"])
+        self.assertNotIn("activity_sort_key", xfer_main[0])
+
+        cent = next(a for a in report if a["code"] == "CENTENARY")
+        xfer_cent = [
+            e
+            for e in cent["entries"]
+            if e.get("transaction_type") == "Sub-account transfer"
+            and e.get("direction") == "transfer_in"
+            and "Test move" in (e.get("details") or "")
+        ]
+        self.assertEqual(len(xfer_cent), 1)
+        self.assertIn("Main", xfer_cent[0]["details"])
 
 
 if __name__ == "__main__":
