@@ -166,7 +166,7 @@
                   {% endfor %}
                   {% if table == 'users' %}
                     <td>
-                      <input type="password" name="ins_password_plain" autocomplete="new-password" placeholder="10+ chars or use hash column">
+                      <input type="password" name="ins_password_plain" autocomplete="new-password" placeholder="{{ min_password_length }}+ chars or use hash column">
                     </td>
                   {% endif %}
                   <td><button type="submit" class="button button-primary">Add row</button></td>

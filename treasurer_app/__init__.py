@@ -39,6 +39,7 @@ from .db import (
     table_exists,
 )
 from .login_config import init_login_manager, user_can
+from .password_policy import min_password_length_from_environ
 from .routes import main_bp
 
 # Whole POST body limit for bank CSV uploads and Settings database upload (multipart total).
@@ -66,6 +67,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         MAIL_USERNAME=os.environ.get("MAIL_USERNAME", "").strip(),
         MAIL_PASSWORD=os.environ.get("MAIL_PASSWORD", ""),
         MAIL_DEFAULT_SENDER=os.environ.get("MAIL_DEFAULT_SENDER", "").strip(),
+        PASSWORD_MIN_LENGTH=min_password_length_from_environ(),
     )
 
     runtime_identity = runtime_lock_identity()
@@ -122,7 +124,10 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.context_processor
     def _inject_permission_helpers():
-        return {"user_can": user_can}
+        return {
+            "user_can": user_can,
+            "min_password_length": int(app.config.get("PASSWORD_MIN_LENGTH", 10)),
+        }
 
     @app.before_request
     def enforce_runtime_lock():
@@ -269,7 +274,8 @@ def create_app(test_config: dict | None = None) -> Flask:
 
                 bootstrap_email = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_EMAIL", "").strip()
                 bootstrap_password = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_PASSWORD", "")
-                if bootstrap_email and "@" in bootstrap_email and len(bootstrap_password) >= 10 and count_users(db) == 0:
+                min_pw = int(app.config.get("PASSWORD_MIN_LENGTH", 10))
+                if bootstrap_email and "@" in bootstrap_email and len(bootstrap_password) >= min_pw and count_users(db) == 0:
                     role_row = db.execute("SELECT id FROM roles WHERE code = 'ADMIN'").fetchone()
                     if role_row and fetch_user_by_email(db, bootstrap_email) is None:
                         create_user_row(

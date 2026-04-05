@@ -7,7 +7,7 @@
     <div class="panel-heading">
       <div>
         <h3>Portal users</h3>
-        <p class="section-note">Create accounts and assign roles. Passwords must be at least 10 characters. Disabled users cannot sign in.</p>
+        <p class="section-note">Create accounts and assign roles. Passwords must be at least {{ min_password_length }} characters. Disabled users cannot sign in.</p>
       </div>
     </div>
 
@@ -22,7 +22,7 @@
           </div>
           <div class="settings-single-field">
             <label for="new_password">Initial password</label>
-            <input type="password" id="new_password" name="password" autocomplete="new-password" minlength="10" required>
+            <input type="password" id="new_password" name="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
           </div>
           <div class="settings-single-field">
             <label for="new_role">Role</label>
@@ -69,7 +69,7 @@
                 </div>
                 <div class="settings-single-field portal-user-row-field">
                   <label class="sr-only" for="pw-{{ u.id }}">New password (optional)</label>
-                  <input type="password" id="pw-{{ u.id }}" name="new_password" autocomplete="new-password" placeholder="Leave blank to keep current" minlength="10">
+                  <input type="password" id="pw-{{ u.id }}" name="new_password" autocomplete="new-password" placeholder="Leave blank to keep current" minlength="{{ min_password_length }}">
                 </div>
                 <div class="portal-user-row-actions">
                   <button type="submit" class="button button-primary">Save</button>

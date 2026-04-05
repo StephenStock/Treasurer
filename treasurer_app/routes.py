@@ -2155,8 +2155,9 @@ def settings_portal_users():
             if not email or "@" not in email:
                 flash("Enter a valid email address.", "error")
                 return redirect(url_for("main.settings_portal_users"))
-            if len(password) < 10:
-                flash("Password must be at least 10 characters.", "error")
+            min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 10))
+            if len(password) < min_pw:
+                flash(f"Password must be at least {min_pw} characters.", "error")
                 return redirect(url_for("main.settings_portal_users"))
             if role_id is None:
                 flash("Choose a role.", "error")
@@ -2187,8 +2188,9 @@ def settings_portal_users():
             update_user_role(db, user_id, role_id)
             set_user_active(db, user_id, active)
             if new_password:
-                if len(new_password) < 10:
-                    flash("New password must be at least 10 characters.", "error")
+                min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 10))
+                if len(new_password) < min_pw:
+                    flash(f"New password must be at least {min_pw} characters.", "error")
                     return redirect(url_for("main.settings_portal_users"))
                 update_user_password(db, user_id, generate_password_hash(new_password))
             db.commit()
@@ -2249,16 +2251,19 @@ def _table_admin_apply_users_password(table: str, form, prefix: str, values: dic
     """Apply optional plain password for `users` rows; mutates `values`."""
     if table != "users":
         return
+    min_pw = int(current_app.config.get("PASSWORD_MIN_LENGTH", 10))
     plain = (form.get(f"{prefix}password_plain") or "").strip()
     if plain:
-        if len(plain) < 10:
-            raise ValueError("Password must be at least 10 characters.")
+        if len(plain) < min_pw:
+            raise ValueError(f"Password must be at least {min_pw} characters.")
         values["password_hash"] = generate_password_hash(plain)
         return
     if for_insert:
         ph = values.get("password_hash")
         if ph is None or (isinstance(ph, str) and not ph.strip()):
-            raise ValueError("For a new user, set a plain password (10+ characters) or paste a password hash.")
+            raise ValueError(
+                f"For a new user, set a plain password ({min_pw}+ characters) or paste a password hash."
+            )
     elif values.get("password_hash") is None:
         values.pop("password_hash", None)
 
