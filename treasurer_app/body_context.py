@@ -59,6 +59,25 @@ def workspace_pair_is_implemented(body: str, role_code: str) -> bool:
     return (body, role_code) in IMPLEMENTED_WORKSPACE_PAIRS
 
 
+def default_picked_workspace_assignment(assignments: list[dict[str, str]]) -> dict[str, str] | None:
+    """Default waffle/workspace when the user has not picked one yet.
+
+    Prefer **Lodge · Treasurer** when that row exists so the main accounts UI opens by
+    default while other body/office areas are still placeholders; otherwise the first
+    assignment that uses the implemented lodge treasurer app (e.g. Lodge · Admin), else
+    the first stored assignment.
+    """
+    if not assignments:
+        return None
+    for a in assignments:
+        if a.get("body") == "lodge" and a.get("role_code") == "TREASURER":
+            return a
+    for a in assignments:
+        if workspace_pair_is_implemented(a["body"], a["role_code"]):
+            return a
+    return assignments[0]
+
+
 def _default_focus_among_allowed(session, allowed: frozenset[str]) -> str:
     """Prefer session if valid, else Treasurer if allowed, else lowest sort_order in ROLE_DEFINITIONS."""
     from .auth_store import ROLE_DEFINITIONS

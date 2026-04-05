@@ -94,6 +94,7 @@ from .auth_store import (
 )
 from flask_login import current_user
 from .body_context import (
+    default_picked_workspace_assignment,
     focus_allowed_role_codes_from_assignments,
     get_active_body,
     get_focus_role_code,
@@ -148,14 +149,9 @@ def _ensure_picked_workspace_default():
     if picked_workspace_pair(session):
         return None
     assigns = _workspace_assignments_list()
-    if not assigns:
-        return None
-    chosen = next(
-        (a for a in assigns if workspace_pair_is_implemented(a["body"], a["role_code"])),
-        None,
-    )
+    chosen = default_picked_workspace_assignment(assigns)
     if chosen is None:
-        chosen = assigns[0]
+        return None
     set_picked_workspace(session, chosen["body"], chosen["role_code"])
     set_focus_role_code(session, chosen["role_code"])
     set_active_body(session, chosen["body"])

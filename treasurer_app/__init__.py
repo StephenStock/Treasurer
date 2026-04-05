@@ -159,6 +159,7 @@ def create_app(test_config: dict | None = None) -> Flask:
 
         from .auth_store import list_workspace_assignments
         from .body_context import (
+            default_picked_workspace_assignment,
             focus_allowed_role_codes_from_assignments,
             get_active_body,
             get_focus_role_code,
@@ -207,8 +208,16 @@ def create_app(test_config: dict | None = None) -> Flask:
                     None,
                 ) or workspace_label_for_pair(eff_body, eff_code)
         else:
-            eff_body, eff_code = body, code
-            focus_workspace_label = workspace_label_for_pair(eff_body, eff_code)
+            default_a = default_picked_workspace_assignment(workspace_assignments)
+            if default_a:
+                eff_body = str(default_a["body"])
+                eff_code = str(default_a["role_code"])
+                focus_workspace_label = default_a.get("label") or workspace_label_for_pair(
+                    eff_body, eff_code
+                )
+            else:
+                eff_body, eff_code = body, code
+                focus_workspace_label = workspace_label_for_pair(eff_body, eff_code)
 
         nav_as_signed_in = current_user.is_authenticated or current_app.config.get("LOGIN_DISABLED")
         show_treasurer_ui = workspace_pair_is_implemented(eff_body, eff_code)
