@@ -50,16 +50,23 @@
       <section class="settings-section">
         <div class="panel-heading">
           <div>
-            <h3>Meeting Schedule</h3>
-            <p class="section-note">Set the year’s meeting dates, names, and types first, because the cash page and deposits key off these blocks.</p>
+            <h3>Lodge meeting cycle</h3>
+            <p class="section-note">
+              Each of the five meetings follows a <strong>repeating pattern</strong> (for example the 3rd Saturday in September).
+              The <strong>next date</strong> column is the next occurrence on or after today — save settings to refresh it after you change the pattern.
+              Cash book, deposits, and catering use these dates.
+            </p>
           </div>
         </div>
         <div class="table-scroll">
-          <table class="settings-table compact-ledger">
+          <table class="settings-table compact-ledger lodge-meeting-cycle-table">
             <thead>
               <tr>
                 <th>Key</th>
-                <th>Date</th>
+                <th>Month</th>
+                <th>Weekday</th>
+                <th>Week in month</th>
+                <th>Next date</th>
                 <th>Name</th>
                 <th>Type</th>
                 <th>Notes</th>
@@ -70,19 +77,41 @@
                 <tr>
                   <td>{{ meeting.meeting_key }}</td>
                   <td>
-                    <input type="date" name="{{ meeting.meeting_key }}_date" value="{{ meeting.meeting_date or '' }}">
+                    <label class="sr-only" for="sched_month_{{ meeting.id }}">Month</label>
+                    <select name="sched_month_{{ meeting.id }}" id="sched_month_{{ meeting.id }}">
+                      {% for num, label in month_choices %}
+                        <option value="{{ num }}" {% if meeting.schedule_month is not none and meeting.schedule_month|int == num %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
                   </td>
                   <td>
-                    <input type="text" name="{{ meeting.meeting_key }}_name" value="{{ meeting.meeting_name }}">
+                    <label class="sr-only" for="sched_weekday_{{ meeting.id }}">Weekday</label>
+                    <select name="sched_weekday_{{ meeting.id }}" id="sched_weekday_{{ meeting.id }}">
+                      {% for num, label in weekday_choices %}
+                        <option value="{{ num }}" {% if meeting.schedule_weekday is not none and meeting.schedule_weekday|int == num %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
                   </td>
                   <td>
-                    <select name="{{ meeting.meeting_key }}_type">
+                    <label class="sr-only" for="sched_ordinal_{{ meeting.id }}">Week in month</label>
+                    <select name="sched_ordinal_{{ meeting.id }}" id="sched_ordinal_{{ meeting.id }}">
+                      {% for num, label in ordinal_choices %}
+                        <option value="{{ num }}" {% if meeting.schedule_ordinal is not none and meeting.schedule_ordinal|int == num %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td class="section-note">{{ meeting.meeting_date or "—" }}</td>
+                  <td>
+                    <input type="text" name="{{ meeting.meeting_key }}_name" value="{{ meeting.meeting_name }}" aria-label="Meeting name">
+                  </td>
+                  <td>
+                    <select name="{{ meeting.meeting_key }}_type" aria-label="Meeting type">
                       <option value="Regular" {% if meeting.meeting_type == 'Regular' %}selected{% endif %}>Regular</option>
                       <option value="Installation" {% if meeting.meeting_type == 'Installation' %}selected{% endif %}>Installation</option>
                     </select>
                   </td>
                   <td>
-                    <input type="text" name="{{ meeting.meeting_key }}_notes" value="{{ meeting.notes or '' }}">
+                    <input type="text" name="{{ meeting.meeting_key }}_notes" value="{{ meeting.notes or '' }}" aria-label="Notes">
                   </td>
                 </tr>
               {% endfor %}

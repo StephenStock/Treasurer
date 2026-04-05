@@ -54,6 +54,9 @@ from .db import (
     verify_sqlite_database_file,
     virtual_account_category_mappings,
     MEAL_BOOKING_COURSES,
+    list_meetings_for_meal_booking,
+    save_meeting_schedule_rules,
+    meal_booking_apply_catalog_selection,
     meal_booking_create_event,
     meal_booking_delete_event,
     meal_booking_get_event,
@@ -65,6 +68,8 @@ from .db import (
     meal_booking_options_for_event,
     meal_booking_regenerate_public_token,
     meal_booking_replace_options,
+    meal_catalog_list_by_course,
+    meal_catalog_replace_all_rows,
     meal_booking_update_event,
 )
 from .auth_store import (
@@ -79,6 +84,7 @@ from .auth_store import (
     update_user_role,
 )
 from .login_config import permission_required, user_can
+from .meeting_schedule import MONTH_CHOICES, ORDINAL_LABELS, WEEKDAY_LABELS
 from . import table_admin as ta
 
 main_bp = Blueprint("main", __name__)
@@ -591,7 +597,8 @@ def _meeting_schedule():
     reporting_period_id = _current_reporting_period_id()
     return db.execute(
         """
-        SELECT meeting_key, meeting_name, meeting_date, meeting_type, sort_order, notes
+        SELECT id, meeting_key, meeting_name, meeting_date, meeting_type, sort_order, notes,
+               schedule_month, schedule_weekday, schedule_ordinal
         FROM meetings
         WHERE reporting_period_id = ?
         ORDER BY sort_order, meeting_key
@@ -2043,20 +2050,36 @@ def settings():
                 resolve_backup_database_path(Path(current_app.config["DATABASE"]))
             )
 
-        for meeting in _meeting_schedule():
-            meeting_key = meeting["meeting_key"]
-            meeting_date = request.form.get(f"{meeting_key}_date") or None
-            meeting_name = request.form.get(f"{meeting_key}_name", "").strip() or meeting["meeting_name"]
-            meeting_type = request.form.get(f"{meeting_key}_type", "").strip() or meeting["meeting_type"]
-            notes = request.form.get(f"{meeting_key}_notes", "").strip()
+        meeting_rows = _meeting_schedule()
+        has_meeting_schedule_fields = any(
+            request.form.get(f"sched_month_{int(m['id'])}") not in (None, "")
+            for m in meeting_rows
+        )
+        if has_meeting_schedule_fields:
+            schedule_updates: list[tuple[int, int, int, int]] = []
+            for m in meeting_rows:
+                mid = int(m["id"])
+                sm = request.form.get(f"sched_month_{mid}", type=int)
+                sw = request.form.get(f"sched_weekday_{mid}", type=int)
+                so = request.form.get(f"sched_ordinal_{mid}", type=int)
+                if sm is None or sw is None or so is None:
+                    flash("Each lodge meeting needs a calendar month, weekday, and which week (1st–5th).", "error")
+                    return redirect(url_for("main.settings"))
+                schedule_updates.append((mid, sm, sw, so))
+            save_meeting_schedule_rules(db, schedule_updates)
 
+        for m in meeting_rows:
+            meeting_key = m["meeting_key"]
+            meeting_name = request.form.get(f"{meeting_key}_name", "").strip() or m["meeting_name"]
+            meeting_type = request.form.get(f"{meeting_key}_type", "").strip() or m["meeting_type"]
+            notes = request.form.get(f"{meeting_key}_notes", "").strip()
             db.execute(
                 """
                 UPDATE meetings
-                SET meeting_date = ?, meeting_name = ?, meeting_type = ?, notes = ?
+                SET meeting_name = ?, meeting_type = ?, notes = ?
                 WHERE reporting_period_id = ? AND meeting_key = ?
                 """,
-                (meeting_date, meeting_name, meeting_type, notes, reporting_period_id, meeting_key),
+                (meeting_name, meeting_type, notes, reporting_period_id, meeting_key),
             )
 
         for account in virtual_account_report(db, reporting_period_id):
@@ -2112,6 +2135,9 @@ def settings():
         lodge_display_name=_lodge_display_name(db),
         default_lodge_display_name=DEFAULT_LODGE_DISPLAY_NAME,
         meeting_schedule=_meeting_schedule(),
+        month_choices=MONTH_CHOICES,
+        weekday_choices=WEEKDAY_LABELS,
+        ordinal_choices=ORDINAL_LABELS,
         virtual_accounts=virtual_accounts,
         category_account_mappings=category_mappings,
     )
@@ -2535,20 +2561,63 @@ def _meal_safe_int(val: object) -> int | None:
         return None
 
 
-def _meal_booking_collect_options_from_setup_form(form) -> list[tuple[str, str, int, bool]]:
-    rows: list[tuple[str, str, int, bool]] = []
+def _parse_gbp_input_to_pence(val: object) -> int | None:
+    s = (str(val or "")).strip()
+    if not s:
+        return None
+    s = s.replace("£", "").replace(",", "").strip()
+    try:
+        return int(round(float(s) * 100))
+    except ValueError:
+        return None
+
+
+def _meal_booking_collect_options_from_setup_form(form) -> list[tuple[str, str, int, bool, int | None]]:
+    rows: list[tuple[str, str, int, bool, int | None]] = []
     for course in MEAL_BOOKING_COURSES:
         labels = form.getlist(f"{course}_label")
         vegs = form.getlist(f"{course}_veg")
+        prices = form.getlist(f"{course}_price")
         while len(vegs) < len(labels):
             vegs.append("0")
+        while len(prices) < len(labels):
+            prices.append("")
         for j, lab in enumerate(labels):
             lab = (lab or "").strip()
             if not lab:
                 continue
             veg_raw = vegs[j] if j < len(vegs) else "0"
             is_veg = str(veg_raw).strip() in {"1", "on", "true", "yes"}
-            rows.append((course, lab, j, is_veg))
+            praw = prices[j] if j < len(prices) else ""
+            pence = _parse_gbp_input_to_pence(praw)
+            rows.append((course, lab, j, is_veg, pence))
+    return rows
+
+
+def _meal_catalog_collect_from_form(form) -> list[tuple[str, str, int | None, bool, bool]]:
+    rows: list[tuple[str, str, int | None, bool, bool]] = []
+    for course in MEAL_BOOKING_COURSES:
+        labels = form.getlist(f"cat_{course}_label")
+        prices = form.getlist(f"cat_{course}_price")
+        vegs = form.getlist(f"cat_{course}_veg")
+        actives = form.getlist(f"cat_{course}_active")
+        while len(prices) < len(labels):
+            prices.append("")
+        while len(vegs) < len(labels):
+            vegs.append("0")
+        while len(actives) < len(labels):
+            actives.append("1")
+        for j, lab in enumerate(labels):
+            lab = (lab or "").strip()
+            if not lab:
+                continue
+            veg_raw = vegs[j] if j < len(vegs) else "0"
+            is_veg = str(veg_raw).strip() in {"1", "on", "true", "yes"}
+            act_raw = actives[j] if j < len(actives) else "1"
+            is_active = str(act_raw).strip() in {"1", "on", "true", "yes"}
+            praw = prices[j] if j < len(prices) else ""
+            pence = _parse_gbp_input_to_pence(praw)
+            rows.append((course, lab, pence, is_veg, is_active))
     return rows
 
 
@@ -2666,21 +2735,51 @@ def meal_bookings_list():
             return redirect(url_for("main.meal_bookings_list"))
         meal_date = (request.form.get("meal_date") or "").strip() or None
         notes = (request.form.get("notes") or "").strip() or None
+        raw_mid = (request.form.get("meeting_id") or "").strip()
+        meeting_id = int(raw_mid) if raw_mid.isdigit() else None
+        if meeting_id and not meal_date:
+            mrow = db.execute("SELECT meeting_date FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if mrow and mrow["meeting_date"]:
+                meal_date = str(mrow["meeting_date"])
         event_id, _tok = meal_booking_create_event(
             db,
             title=title,
             meal_date=meal_date,
             notes=notes,
+            meeting_id=meeting_id,
         )
         db.commit()
-        flash("Meal booking created. Add menu choices on the next screen.", "success")
+        flash("Meal booking created. Choose dishes for this meeting on the next screen.", "success")
         return redirect(url_for("main.meal_booking_setup", event_id=event_id))
 
     events = meal_booking_list_events(db)
+    meetings = list_meetings_for_meal_booking(db)
     return render_template(
         "meal_bookings_list.html",
         active_page="meal_bookings",
         events=events,
+        meetings=meetings,
+    )
+
+
+@main_bp.route("/meal-bookings/catering-menu", methods=["GET", "POST"])
+@permission_required("page_meal_bookings")
+def meal_catering_menu():
+    """Editable master list of dishes and prices (e.g. Affordable Catering); used when building each meeting menu."""
+    db = get_db()
+    if request.method == "POST":
+        rows = _meal_catalog_collect_from_form(request.form)
+        meal_catalog_replace_all_rows(db, rows)
+        db.commit()
+        flash("Catering menu saved.", "success")
+        return redirect(url_for("main.meal_catering_menu"))
+
+    catalog_by_course = meal_catalog_list_by_course(db)
+    return render_template(
+        "meal_catering_menu.html",
+        active_page="meal_catering",
+        courses=MEAL_BOOKING_COURSES,
+        catalog_by_course=catalog_by_course,
     )
 
 
@@ -2707,6 +2806,14 @@ def meal_booking_setup(event_id: int):
             flash("Meal booking deleted.", "success")
             return redirect(url_for("main.meal_bookings_list"))
 
+        if request.form.get("action") == "apply_catalog":
+            raw = request.form.getlist("catalog_pick")
+            ids = [int(x) for x in raw if str(x).strip().isdigit()]
+            meal_booking_apply_catalog_selection(db, event_id, ids)
+            db.commit()
+            flash("Meeting menu updated from your catering selections.", "success")
+            return redirect(url_for("main.meal_booking_setup", event_id=event_id))
+
         title = (request.form.get("title") or "").strip()
         if not title:
             flash("Title is required.", "error")
@@ -2714,6 +2821,12 @@ def meal_booking_setup(event_id: int):
         meal_date = (request.form.get("meal_date") or "").strip() or None
         notes = (request.form.get("notes") or "").strip() or None
         is_open = request.form.get("is_open") == "1"
+        raw_mid = (request.form.get("meeting_id") or "").strip()
+        meeting_id = int(raw_mid) if raw_mid.isdigit() else None
+        if meeting_id and not meal_date:
+            mrow = db.execute("SELECT meeting_date FROM meetings WHERE id = ?", (meeting_id,)).fetchone()
+            if mrow and mrow["meeting_date"]:
+                meal_date = str(mrow["meeting_date"])
         meal_booking_update_event(
             db,
             event_id=event_id,
@@ -2721,6 +2834,7 @@ def meal_booking_setup(event_id: int):
             meal_date=meal_date,
             notes=notes,
             is_open=is_open,
+            meeting_id=meeting_id,
         )
         rows = _meal_booking_collect_options_from_setup_form(request.form)
         meal_booking_replace_options(db, event_id, rows)
@@ -2729,14 +2843,20 @@ def meal_booking_setup(event_id: int):
         return redirect(url_for("main.meal_booking_setup", event_id=event_id))
 
     options_by_course = meal_booking_options_for_event(db, event_id)
+    catalog_by_course = meal_catalog_list_by_course(db)
+    meetings = list_meetings_for_meal_booking(db)
     base = request.host_url.rstrip("/")
     public_booking_url = f"{base}{url_for('main.public_meal_booking', token=event['public_token'])}"
+    course_labels = {"starter": "Starter", "main": "Main course", "dessert": "Dessert"}
     return render_template(
         "meal_booking_setup.html",
         active_page="meal_bookings",
         event=event,
         options_by_course=options_by_course,
         courses=MEAL_BOOKING_COURSES,
+        catalog_by_course=catalog_by_course,
+        meetings=meetings,
+        course_labels=course_labels,
         public_booking_url=public_booking_url,
     )
 
@@ -2764,9 +2884,13 @@ def meal_booking_responses(event_id: int):
         if not row:
             return f"#{oid_i}"
         label = str(row["label"])
+        pp = row.get("price_pence")
+        price_bit = ""
+        if pp is not None:
+            price_bit = f" (+£{int(pp) / 100:.2f})"
         if row.get("is_vegetarian"):
-            return f"{label} (veg)"
-        return label
+            return f"{label} (veg){price_bit}"
+        return f"{label}{price_bit}"
 
     return render_template(
         "meal_booking_responses.html",

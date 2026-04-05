@@ -8,7 +8,9 @@
       <div>
         <h3>{{ event.title }}</h3>
         <p class="section-note">
-          <a href="{{ url_for('main.meal_bookings_list') }}">← All meal bookings</a>
+          <a href="{{ url_for('main.meal_bookings_list') }}">← Catering</a>
+          ·
+          <a href="{{ url_for('main.meal_catering_menu') }}">Catering menu &amp; prices</a>
           ·
           <a href="{{ url_for('main.meal_booking_responses', event_id=event.id) }}">View responses</a>
         </p>
@@ -23,12 +25,48 @@
       <p class="section-note">Anyone with this link can submit choices without signing in. It does not show the rest of Lodge Office (signed-in areas).</p>
     </div>
 
+    <form method="post" class="meal-booking-setup-form meal-catalog-apply-form">
+      <h4 class="public-meal-h4">Choose dishes for this meeting</h4>
+      <p class="section-note">
+        Tick the dishes you want to offer for <strong>{{ event.title }}</strong>. You must pick at least one starter, one main, and one dessert for the public form to work.
+        Supplements from the master list are copied with their prices.
+      </p>
+      <input type="hidden" name="action" value="apply_catalog">
+      {% for c in courses %}
+        <div class="meal-catalog-pick-block">
+          <h5 class="meal-catalog-pick-heading">{{ course_labels[c] }}</h5>
+          <div class="meal-catalog-pick-scroll">
+            {% for opt in catalog_by_course[c] %}
+              {% if opt.is_active %}
+                <label class="meal-catalog-pick-label">
+                  <input type="checkbox" name="catalog_pick" value="{{ opt.id }}">
+                  <span>{{ opt.label }}{% if opt.price_pence is not none %} <span class="meal-option-price">(+£{{ '%.2f' % (opt.price_pence / 100) }})</span>{% endif %}{% if opt.is_vegetarian %} <span class="public-meal-veg-tag">(veg)</span>{% endif %}</span>
+                </label>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+      <div class="meal-booking-setup-actions">
+        <button type="submit" class="button button-secondary">Apply selection to this meeting</button>
+      </div>
+    </form>
+
     <form method="post" class="meal-booking-setup-form">
       <h4 class="public-meal-h4">Details</h4>
       <div class="meal-booking-create-grid">
         <label class="settings-field">
           <span class="settings-label">Title</span>
           <input type="text" name="title" value="{{ event.title }}" required>
+        </label>
+        <label class="settings-field">
+          <span class="settings-label">Lodge meeting (optional)</span>
+          <select name="meeting_id">
+            <option value="">— None —</option>
+            {% for m in meetings %}
+              <option value="{{ m.id }}" {% if event.meeting_id is not none and m.id == event.meeting_id %}selected{% endif %}>{{ m.meeting_name }}{% if m.meeting_date %} — {{ m.meeting_date }}{% endif %}</option>
+            {% endfor %}
+          </select>
         </label>
         <label class="settings-field">
           <span class="settings-label">Meal date</span>
@@ -44,15 +82,20 @@
         </label>
       </div>
 
-      {% set course_labels = {'starter': 'Starter', 'main': 'Main course', 'dessert': 'Dessert'} %}
       {% for c in courses %}
         <div class="meal-setup-course-block">
           <h4 class="public-meal-h4">{{ course_labels[c] }}</h4>
-          <p class="section-note">Add each dish option. Mark <strong>Vegetarian option</strong> for alternative veg choices.</p>
+          <p class="section-note">Adjust wording for this meeting if needed. Leave <strong>Extra (£)</strong> blank when included in the package; enter a supplement for upgrades.</p>
+          <div class="meal-catalog-grid-head meal-setup-price-head">
+            <span>Dish</span>
+            <span>Extra (£)</span>
+            <span>Veg</span>
+          </div>
           <div class="meal-setup-option-rows">
             {% for opt in options_by_course[c] %}
-              <div class="meal-setup-option-row">
+              <div class="meal-setup-option-row meal-setup-option-row-price">
                 <input type="text" name="{{ c }}_label" value="{{ opt.label }}" placeholder="Dish name" aria-label="{{ course_labels[c] }} option">
+                <input type="text" name="{{ c }}_price" value="{% if opt.price_pence is not none %}{{ '%.2f' % (opt.price_pence / 100) }}{% endif %}" placeholder="—" inputmode="decimal" aria-label="Supplement GBP">
                 <select name="{{ c }}_veg" aria-label="Vegetarian option">
                   <option value="0" {% if not opt.is_vegetarian %}selected{% endif %}>Standard</option>
                   <option value="1" {% if opt.is_vegetarian %}selected{% endif %}>Vegetarian option</option>
@@ -60,8 +103,9 @@
               </div>
             {% endfor %}
             {% for _ in range(5) %}
-              <div class="meal-setup-option-row">
+              <div class="meal-setup-option-row meal-setup-option-row-price">
                 <input type="text" name="{{ c }}_label" value="" placeholder="Add another…" aria-label="{{ course_labels[c] }} option">
+                <input type="text" name="{{ c }}_price" value="" placeholder="—" inputmode="decimal" aria-label="Supplement GBP">
                 <select name="{{ c }}_veg" aria-label="Vegetarian option">
                   <option value="0" selected>Standard</option>
                   <option value="1">Vegetarian option</option>

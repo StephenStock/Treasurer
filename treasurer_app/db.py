@@ -1892,6 +1892,9 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
             meeting_type TEXT NOT NULL DEFAULT 'Regular',
             sort_order INTEGER NOT NULL DEFAULT 0,
             notes TEXT,
+            schedule_month INTEGER,
+            schedule_weekday INTEGER,
+            schedule_ordinal INTEGER,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
             FOREIGN KEY (reporting_period_id) REFERENCES reporting_periods (id)
         );
@@ -2009,6 +2012,7 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
     from .auth_store import ensure_auth_tables as _ensure_auth_tables
 
     _ensure_auth_tables(db)
+    ensure_lodge_meeting_schedule_migrated(db)
     ensure_meal_booking_tables(db)
 
 
@@ -2429,28 +2433,162 @@ def _dues_status(
     return "unpaid"
 
 
+# Default lodge cycle: 3rd Saturday in September, November, January, March, May (edit per lodge in Catering).
+MEETING_KEY_SCHEDULE_DEFAULTS: dict[str, tuple[int, int, int]] = {
+    "SEPTEMBER": (9, 5, 3),
+    "NOVEMBER": (11, 5, 3),
+    "JANUARY": (1, 5, 3),
+    "MARCH": (3, 5, 3),
+    "MAY": (5, 5, 3),
+}
+
+
+def _ensure_meetings_schedule_columns(db: sqlite3.Connection) -> None:
+    if not table_exists(db, "meetings"):
+        return
+    cols = {row["name"] for row in db.execute("PRAGMA table_info(meetings)").fetchall()}
+    if "schedule_month" not in cols:
+        db.execute("ALTER TABLE meetings ADD COLUMN schedule_month INTEGER")
+    if "schedule_weekday" not in cols:
+        db.execute("ALTER TABLE meetings ADD COLUMN schedule_weekday INTEGER")
+    if "schedule_ordinal" not in cols:
+        db.execute("ALTER TABLE meetings ADD COLUMN schedule_ordinal INTEGER")
+
+
+def refresh_meeting_dates_from_schedule(db: sqlite3.Connection) -> int:
+    """Set meeting_date to the next occurrence on or after today for every row with a schedule rule."""
+    from datetime import date
+
+    from .meeting_schedule import iso_date, next_occurrence_on_or_after
+
+    today = date.today()
+    rows = db.execute(
+        """
+        SELECT id, schedule_month, schedule_weekday, schedule_ordinal
+        FROM meetings
+        WHERE schedule_month IS NOT NULL
+          AND schedule_weekday IS NOT NULL
+          AND schedule_ordinal IS NOT NULL
+        """
+    ).fetchall()
+    n = 0
+    for r in rows:
+        sm = int(r["schedule_month"])
+        sw = int(r["schedule_weekday"])
+        so = int(r["schedule_ordinal"])
+        next_d = next_occurrence_on_or_after(sm, sw, so, today)
+        db.execute(
+            "UPDATE meetings SET meeting_date = ? WHERE id = ?",
+            (iso_date(next_d), int(r["id"])),
+        )
+        n += 1
+    return n
+
+
+def _backfill_meeting_schedule_from_keys(db: sqlite3.Connection) -> bool:
+    """One-time: set schedule columns from meeting_key for legacy rows. Returns True if anything changed."""
+    rows = db.execute("SELECT id, meeting_key, schedule_month FROM meetings").fetchall()
+    changed = False
+    for r in rows:
+        if r["schedule_month"] is not None:
+            continue
+        key = str(r["meeting_key"])
+        if key not in MEETING_KEY_SCHEDULE_DEFAULTS:
+            continue
+        sm, sw, so = MEETING_KEY_SCHEDULE_DEFAULTS[key]
+        db.execute(
+            """
+            UPDATE meetings
+            SET schedule_month = ?, schedule_weekday = ?, schedule_ordinal = ?
+            WHERE id = ?
+            """,
+            (sm, sw, so, int(r["id"])),
+        )
+        changed = True
+    return changed
+
+
+def ensure_lodge_meeting_schedule_migrated(db: sqlite3.Connection) -> None:
+    """Add schedule columns, backfill legacy rows, fill missing meeting_date from rules."""
+    _ensure_meetings_schedule_columns(db)
+    changed = _backfill_meeting_schedule_from_keys(db)
+    need_dates = db.execute(
+        """
+        SELECT COUNT(*) AS n FROM meetings
+        WHERE schedule_month IS NOT NULL
+          AND schedule_weekday IS NOT NULL
+          AND schedule_ordinal IS NOT NULL
+          AND (meeting_date IS NULL OR TRIM(meeting_date) = '')
+        """
+    ).fetchone()
+    if changed or int(need_dates["n"] or 0) > 0:
+        refresh_meeting_dates_from_schedule(db)
+
+
+def save_meeting_schedule_rules(
+    db: sqlite3.Connection,
+    rows: list[tuple[int, int, int, int]],
+) -> None:
+    """rows: (meeting_id, month 1–12, weekday 0–6, ordinal 1–5). Recomputes meeting_date from today onward."""
+    from datetime import date
+
+    from .meeting_schedule import iso_date, next_occurrence_on_or_after
+
+    today = date.today()
+    for mid, sm, sw, so in rows:
+        if sm < 1 or sm > 12 or sw < 0 or sw > 6 or so < 1 or so > 5:
+            continue
+        db.execute(
+            """
+            UPDATE meetings
+            SET schedule_month = ?, schedule_weekday = ?, schedule_ordinal = ?
+            WHERE id = ?
+            """,
+            (sm, sw, so, mid),
+        )
+        next_d = next_occurrence_on_or_after(sm, sw, so, today)
+        db.execute(
+            "UPDATE meetings SET meeting_date = ? WHERE id = ?",
+            (iso_date(next_d), mid),
+        )
+
+
 def seed_meeting_schedule(db: sqlite3.Connection, reporting_period_id: int = 1) -> None:
+    _ensure_meetings_schedule_columns(db)
     meeting_rows = [
-        ("SEPTEMBER", "September Meeting", "2025-09-15", "Regular", 1, ""),
-        ("NOVEMBER", "November Meeting", "2025-11-17", "Regular", 2, ""),
-        ("JANUARY", "January Meeting", "2026-01-19", "Regular", 3, ""),
-        ("MARCH", "March Meeting", "2026-03-16", "Regular", 4, ""),
-        ("MAY", "Installation Meeting", "2026-05-18", "Installation", 5, ""),
+        ("SEPTEMBER", "September Meeting", "Regular", 1, "", 9, 5, 3),
+        ("NOVEMBER", "November Meeting", "Regular", 2, "", 11, 5, 3),
+        ("JANUARY", "January Meeting", "Regular", 3, "", 1, 5, 3),
+        ("MARCH", "March Meeting", "Regular", 4, "", 3, 5, 3),
+        ("MAY", "Installation Meeting", "Installation", 5, "", 5, 5, 3),
     ]
 
     db.executemany(
         """
         INSERT INTO meetings (
-            reporting_period_id, meeting_key, meeting_name, meeting_date, meeting_type, sort_order, notes
+            reporting_period_id, meeting_key, meeting_name, meeting_date, meeting_type, sort_order, notes,
+            schedule_month, schedule_weekday, schedule_ordinal
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (meeting_key) DO NOTHING
         """,
         [
-            (reporting_period_id, key, name, meeting_date, meeting_type, sort_order, notes)
-            for key, name, meeting_date, meeting_type, sort_order, notes in meeting_rows
+            (
+                reporting_period_id,
+                key,
+                name,
+                None,
+                meeting_type,
+                sort_order,
+                notes,
+                sm,
+                sw,
+                so,
+            )
+            for key, name, meeting_type, sort_order, notes, sm, sw, so in meeting_rows
         ],
     )
+    ensure_lodge_meeting_schedule_migrated(db)
 
 
 def seed_virtual_account_balances(db: sqlite3.Connection, reporting_period_id: int = 1) -> None:
@@ -3912,6 +4050,18 @@ def init_db() -> None:
     db.commit()
 
 
+def _ensure_meal_booking_column_migrations(db: sqlite3.Connection) -> None:
+    """Add columns introduced after first deploy (SQLite has no IF NOT EXISTS for columns)."""
+    if table_exists(db, "meal_booking_options"):
+        cols = {row["name"] for row in db.execute("PRAGMA table_info(meal_booking_options)").fetchall()}
+        if "price_pence" not in cols:
+            db.execute("ALTER TABLE meal_booking_options ADD COLUMN price_pence INTEGER")
+    if table_exists(db, "meal_booking_events"):
+        cols = {row["name"] for row in db.execute("PRAGMA table_info(meal_booking_events)").fetchall()}
+        if "meeting_id" not in cols:
+            db.execute("ALTER TABLE meal_booking_events ADD COLUMN meeting_id INTEGER")
+
+
 def ensure_meal_booking_tables(db: sqlite3.Connection) -> None:
     db.executescript(
         _schema_sql_for_sqlite(
@@ -3920,10 +4070,12 @@ def ensure_meal_booking_tables(db: sqlite3.Connection) -> None:
                 id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
                 title TEXT NOT NULL,
                 meal_date TEXT,
+                meeting_id INTEGER,
                 public_token TEXT NOT NULL UNIQUE,
                 is_open INTEGER NOT NULL DEFAULT 1,
                 notes TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
+                FOREIGN KEY (meeting_id) REFERENCES meetings (id) ON DELETE SET NULL
             );
 
             CREATE TABLE IF NOT EXISTS meal_booking_options (
@@ -3933,6 +4085,7 @@ def ensure_meal_booking_tables(db: sqlite3.Connection) -> None:
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 label TEXT NOT NULL,
                 is_vegetarian INTEGER NOT NULL DEFAULT 0,
+                price_pence INTEGER,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
                 FOREIGN KEY (event_id) REFERENCES meal_booking_events (id) ON DELETE CASCADE,
                 CHECK (course IN ('starter', 'main', 'dessert'))
@@ -3954,6 +4107,147 @@ def ensure_meal_booking_tables(db: sqlite3.Connection) -> None:
             """
         )
     )
+    _ensure_meal_booking_column_migrations(db)
+    ensure_meal_catalog_tables(db)
+
+
+def _seed_meal_catalog_if_empty(db: sqlite3.Connection) -> None:
+    row = db.execute("SELECT COUNT(*) AS n FROM meal_catalog_items").fetchone()
+    if row and int(row["n"]) > 0:
+        return
+    from .meal_catalog_seed import expand_seed_for_database
+
+    for course, sort_order, label, price_pence, is_veg in expand_seed_for_database():
+        db.execute(
+            """
+            INSERT INTO meal_catalog_items (course, sort_order, label, price_pence, is_vegetarian, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+            """,
+            (course, sort_order, label, price_pence, 1 if is_veg else 0),
+        )
+
+
+def meal_catalog_list_by_course(db: sqlite3.Connection) -> dict[str, list[dict[str, object]]]:
+    rows = db.execute(
+        """
+        SELECT id, course, sort_order, label, price_pence, is_vegetarian, is_active
+        FROM meal_catalog_items
+        ORDER BY course, sort_order, id
+        """
+    ).fetchall()
+    out: dict[str, list[dict[str, object]]] = {c: [] for c in MEAL_BOOKING_COURSES}
+    for r in rows:
+        c = str(r["course"])
+        if c not in out:
+            continue
+        out[c].append(
+            {
+                "id": int(r["id"]),
+                "course": c,
+                "sort_order": int(r["sort_order"]),
+                "label": r["label"],
+                "price_pence": int(r["price_pence"]) if r["price_pence"] is not None else None,
+                "is_vegetarian": bool(r["is_vegetarian"]),
+                "is_active": bool(r["is_active"]),
+            }
+        )
+    return out
+
+
+def meal_catalog_replace_all_rows(
+    db: sqlite3.Connection,
+    rows: list[tuple[str, str, int | None, bool, bool]],
+) -> None:
+    """Replace entire catalog: (course, label, price_pence, is_vegetarian, is_active)."""
+    db.execute("DELETE FROM meal_catalog_items")
+    order = {c: 0 for c in MEAL_BOOKING_COURSES}
+    for course, label, price_pence, is_veg, is_active in rows:
+        label = (label or "").strip()
+        if not label or course not in MEAL_BOOKING_COURSES:
+            continue
+        so = order[course]
+        order[course] = so + 1
+        db.execute(
+            """
+            INSERT INTO meal_catalog_items (course, sort_order, label, price_pence, is_vegetarian, is_active)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (course, so, label, price_pence, 1 if is_veg else 0, 1 if is_active else 0),
+        )
+
+
+def meal_booking_apply_catalog_selection(
+    db: sqlite3.Connection,
+    event_id: int,
+    catalog_ids: list[int],
+) -> None:
+    """Snapshot selected catalog rows into this meal booking (replaces event options)."""
+    if not catalog_ids:
+        meal_booking_replace_options(db, event_id, [])
+        return
+    placeholders = ",".join("?" * len(catalog_ids))
+    q = f"""
+        SELECT course, sort_order, label, price_pence, is_vegetarian
+        FROM meal_catalog_items
+        WHERE id IN ({placeholders}) AND is_active = 1
+        ORDER BY CASE course WHEN 'starter' THEN 0 WHEN 'main' THEN 1 ELSE 2 END, sort_order, id
+    """
+    found = db.execute(q, tuple(catalog_ids)).fetchall()
+    by_course: dict[str, list[sqlite3.Row]] = {c: [] for c in MEAL_BOOKING_COURSES}
+    for r in found:
+        by_course[str(r["course"])].append(r)
+    out: list[tuple[str, str, int, bool, int | None]] = []
+    for course in MEAL_BOOKING_COURSES:
+        for j, r in enumerate(by_course[course]):
+            pp = r["price_pence"]
+            ppt = int(pp) if pp is not None else None
+            out.append(
+                (
+                    course,
+                    str(r["label"]).strip(),
+                    j,
+                    bool(r["is_vegetarian"]),
+                    ppt,
+                )
+            )
+    meal_booking_replace_options(db, event_id, out)
+
+
+def list_meetings_for_meal_booking(db: sqlite3.Connection) -> list[dict[str, object]]:
+    if not table_exists(db, "meetings"):
+        return []
+    rows = db.execute(
+        """
+        SELECT id, meeting_key, meeting_name, meeting_date, meeting_type,
+               schedule_month, schedule_weekday, schedule_ordinal, sort_order
+        FROM meetings
+        ORDER BY sort_order ASC, id ASC
+        LIMIT 100
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def ensure_meal_catalog_tables(db: sqlite3.Connection) -> None:
+    db.executescript(
+        _schema_sql_for_sqlite(
+            """
+            CREATE TABLE IF NOT EXISTS meal_catalog_items (
+                id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                course TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                label TEXT NOT NULL,
+                price_pence INTEGER,
+                is_vegetarian INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
+                CHECK (course IN ('starter', 'main', 'dessert'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_meal_catalog_course ON meal_catalog_items (course, sort_order, id);
+            """
+        )
+    )
+    _seed_meal_catalog_if_empty(db)
 
 
 def meal_booking_new_token() -> str:
@@ -3966,14 +4260,21 @@ def meal_booking_create_event(
     title: str,
     meal_date: str | None,
     notes: str | None,
+    meeting_id: int | None = None,
 ) -> tuple[int, str]:
     token = meal_booking_new_token()
     cur = db.execute(
         """
-        INSERT INTO meal_booking_events (title, meal_date, public_token, is_open, notes)
-        VALUES (?, ?, ?, 1, ?)
+        INSERT INTO meal_booking_events (title, meal_date, meeting_id, public_token, is_open, notes)
+        VALUES (?, ?, ?, ?, 1, ?)
         """,
-        (title.strip(), meal_date or None, token, (notes or "").strip() or None),
+        (
+            title.strip(),
+            meal_date or None,
+            meeting_id,
+            token,
+            (notes or "").strip() or None,
+        ),
     )
     return int(cur.lastrowid), token
 
@@ -3998,8 +4299,11 @@ def meal_booking_list_events(db: sqlite3.Connection) -> list[dict[str, object]]:
     rows = db.execute(
         """
         SELECT e.*,
-               (SELECT COUNT(*) FROM meal_booking_responses r WHERE r.event_id = e.id) AS response_count
+               (SELECT COUNT(*) FROM meal_booking_responses r WHERE r.event_id = e.id) AS response_count,
+               m.meeting_name AS linked_meeting_name,
+               m.meeting_date AS linked_meeting_date
         FROM meal_booking_events e
+        LEFT JOIN meetings m ON e.meeting_id = m.id
         ORDER BY
             CASE WHEN e.meal_date IS NULL OR e.meal_date = '' THEN 1 ELSE 0 END,
             e.meal_date DESC,
@@ -4017,11 +4321,12 @@ def meal_booking_update_event(
     meal_date: str | None,
     notes: str | None,
     is_open: bool,
+    meeting_id: int | None = None,
 ) -> bool:
     cur = db.execute(
         """
         UPDATE meal_booking_events
-        SET title = ?, meal_date = ?, notes = ?, is_open = ?
+        SET title = ?, meal_date = ?, notes = ?, is_open = ?, meeting_id = ?
         WHERE id = ?
         """,
         (
@@ -4029,6 +4334,7 @@ def meal_booking_update_event(
             meal_date or None,
             (notes or "").strip() or None,
             1 if is_open else 0,
+            meeting_id,
             event_id,
         ),
     )
@@ -4054,11 +4360,16 @@ def meal_booking_delete_event(db: sqlite3.Connection, event_id: int) -> bool:
 def meal_booking_replace_options(
     db: sqlite3.Connection,
     event_id: int,
-    rows: list[tuple[str, str, int, bool]],
+    rows: list[tuple[str, str, int, bool, int | None]],
 ) -> None:
-    """rows: (course, label, sort_order, is_vegetarian)."""
+    """rows: (course, label, sort_order, is_vegetarian, price_pence optional extra)."""
     db.execute("DELETE FROM meal_booking_options WHERE event_id = ?", (event_id,))
-    for course, label, sort_order, is_veg in rows:
+    for row in rows:
+        if len(row) == 4:
+            course, label, sort_order, is_veg = row
+            price_pence: int | None = None
+        else:
+            course, label, sort_order, is_veg, price_pence = row
         label = (label or "").strip()
         if not label:
             continue
@@ -4066,10 +4377,10 @@ def meal_booking_replace_options(
             continue
         db.execute(
             """
-            INSERT INTO meal_booking_options (event_id, course, sort_order, label, is_vegetarian)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO meal_booking_options (event_id, course, sort_order, label, is_vegetarian, price_pence)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (event_id, course, sort_order, label, 1 if is_veg else 0),
+            (event_id, course, sort_order, label, 1 if is_veg else 0, price_pence),
         )
 
 
@@ -4079,7 +4390,7 @@ def meal_booking_options_for_event(
 ) -> dict[str, list[dict[str, object]]]:
     rows = db.execute(
         """
-        SELECT id, course, sort_order, label, is_vegetarian
+        SELECT id, course, sort_order, label, is_vegetarian, price_pence
         FROM meal_booking_options
         WHERE event_id = ?
         ORDER BY course, sort_order, id
@@ -4091,6 +4402,7 @@ def meal_booking_options_for_event(
         course = str(row["course"])
         if course not in out:
             continue
+        pp = row["price_pence"]
         out[course].append(
             {
                 "id": int(row["id"]),
@@ -4098,6 +4410,7 @@ def meal_booking_options_for_event(
                 "sort_order": int(row["sort_order"]),
                 "label": row["label"],
                 "is_vegetarian": bool(row["is_vegetarian"]),
+                "price_pence": int(pp) if pp is not None else None,
             }
         )
     return out
@@ -4106,14 +4419,19 @@ def meal_booking_options_for_event(
 def meal_booking_option_label_map(db: sqlite3.Connection, event_id: int) -> dict[int, dict[str, object]]:
     rows = db.execute(
         """
-        SELECT id, course, label, is_vegetarian
+        SELECT id, course, label, is_vegetarian, price_pence
         FROM meal_booking_options
         WHERE event_id = ?
         """,
         (event_id,),
     ).fetchall()
     return {
-        int(r["id"]): {"course": r["course"], "label": r["label"], "is_vegetarian": bool(r["is_vegetarian"])}
+        int(r["id"]): {
+            "course": r["course"],
+            "label": r["label"],
+            "is_vegetarian": bool(r["is_vegetarian"]),
+            "price_pence": int(r["price_pence"]) if r["price_pence"] is not None else None,
+        }
         for r in rows
     }
 

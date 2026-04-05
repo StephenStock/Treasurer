@@ -27,7 +27,7 @@
     <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.members') }}">Members</a>
     {% endif %}
     {% if user_can('page_meal_bookings') %}
-    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.meal_bookings_list') }}">Meal bookings</a>
+    <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.meal_bookings_list') }}">Catering</a>
     {% endif %}
     {% if user_can('page_settings') %}
     <a class="app-launcher-item" role="menuitem" href="{{ url_for('main.settings') }}">Settings</a>

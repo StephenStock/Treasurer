@@ -62,7 +62,7 @@
             <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
             {% endif %}
             {% if user_can('page_meal_bookings') %}
-            <a class="nav-link {% if active_page == 'meal_bookings' %}is-active{% endif %}" href="{{ url_for('main.meal_bookings_list') }}">Meal bookings</a>
+            <a class="nav-link {% if active_page in ('meal_bookings', 'meal_catering') %}is-active{% endif %}" href="{{ url_for('main.meal_bookings_list') }}">Catering</a>
             {% endif %}
             {% if user_can('page_help') %}
             <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>

@@ -10,10 +10,12 @@ from treasurer_app.db import (
     DatabaseHandle,
     ensure_financial_tables,
     init_db,
+    meal_booking_apply_catalog_selection,
     meal_booking_create_event,
     meal_booking_get_event_by_token,
     meal_booking_list_events,
     meal_booking_replace_options,
+    meal_catalog_list_by_course,
 )
 from treasurer_app.login_config import init_login_manager, user_can
 from treasurer_app.routes import main_bp
@@ -76,10 +78,10 @@ class MealBookingsTestCase(unittest.TestCase):
             self.db,
             event_id,
             [
-                ("starter", "Soup", 0, False),
-                ("main", "Beef", 0, False),
-                ("main", "Nut roast", 0, True),
-                ("dessert", "Cake", 0, False),
+                ("starter", "Soup", 0, False, None),
+                ("main", "Beef", 0, False, None),
+                ("main", "Nut roast", 0, True, None),
+                ("dessert", "Cake", 0, False, None),
             ],
         )
         self.db.commit()
@@ -110,9 +112,9 @@ class MealBookingsTestCase(unittest.TestCase):
             self.db,
             event_id,
             [
-                ("starter", "A", 0, False),
-                ("main", "B", 0, False),
-                ("dessert", "C", 0, False),
+                ("starter", "A", 0, False, None),
+                ("main", "B", 0, False, None),
+                ("dessert", "C", 0, False, None),
             ],
         )
         self.db.commit()
@@ -142,6 +144,30 @@ class MealBookingsTestCase(unittest.TestCase):
             (event_id,),
         ).fetchone()["n"]
         self.assertEqual(int(n), 1)
+
+    def test_apply_catalog_to_meeting_snapshots_prices(self) -> None:
+        event_id, _tok = meal_booking_create_event(
+            self.db,
+            title="Catalog test",
+            meal_date="2026-06-01",
+            notes=None,
+        )
+        cat = meal_catalog_list_by_course(self.db)
+        starter_ids = [int(o["id"]) for o in cat["starter"][:1]]
+        main_ids = [int(o["id"]) for o in cat["main"][:1]]
+        dessert_ids = [int(o["id"]) for o in cat["dessert"][:1]]
+        self.assertTrue(starter_ids and main_ids and dessert_ids)
+        meal_booking_apply_catalog_selection(
+            self.db,
+            event_id,
+            starter_ids + main_ids + dessert_ids,
+        )
+        self.db.commit()
+        row = self.db.execute(
+            "SELECT price_pence FROM meal_booking_options WHERE event_id = ? AND course = 'starter' LIMIT 1",
+            (event_id,),
+        ).fetchone()
+        self.assertIsNotNone(row)
 
 
 if __name__ == "__main__":

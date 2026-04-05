@@ -216,6 +216,9 @@ CREATE TABLE meetings (
     meeting_type TEXT NOT NULL DEFAULT 'Regular',
     sort_order INTEGER NOT NULL DEFAULT 0,
     notes TEXT,
+    schedule_month INTEGER,
+    schedule_weekday INTEGER,
+    schedule_ordinal INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
     FOREIGN KEY (reporting_period_id) REFERENCES reporting_periods (id)
 );

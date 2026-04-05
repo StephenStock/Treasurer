@@ -38,7 +38,7 @@
               {% for opt in options_by_course[c] %}
                 <label class="meal-radio-label">
                   <input type="radio" name="m_{{ c }}" value="{{ opt.id }}">
-                  <span>{{ opt.label }}{% if opt.is_vegetarian %} <span class="public-meal-veg-tag">(veg)</span>{% endif %}</span>
+                  <span>{{ opt.label }}{% if opt.price_pence is not none %} <span class="meal-option-price">(+£{{ '%.2f' % (opt.price_pence / 100) }})</span>{% endif %}{% if opt.is_vegetarian %} <span class="public-meal-veg-tag">(veg)</span>{% endif %}</span>
                 </label>
               {% endfor %}
             </div>
@@ -71,7 +71,7 @@
                     {% for opt in options_by_course[c] %}
                       <label class="meal-radio-label">
                         <input type="radio" name="g{{ gi }}_{{ c }}" value="{{ opt.id }}">
-                        <span>{{ opt.label }}{% if opt.is_vegetarian %} <span class="public-meal-veg-tag">(veg)</span>{% endif %}</span>
+                        <span>{{ opt.label }}{% if opt.price_pence is not none %} <span class="meal-option-price">(+£{{ '%.2f' % (opt.price_pence / 100) }})</span>{% endif %}{% if opt.is_vegetarian %} <span class="public-meal-veg-tag">(veg)</span>{% endif %}</span>
                       </label>
                     {% endfor %}
                   </div>

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Catering menu | Lodge Office{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Catering menu (master list)</h3>
+        <p class="section-note">
+          Default dishes match <strong>Affordable Catering</strong>’s published menu (three-course package and optional upgrades).
+          Edit prices or dishes here whenever the caterer changes them — this list is the library you pick from for each meeting.
+        </p>
+        <p class="section-note">
+          <a href="{{ url_for('main.meal_bookings_list') }}">← Catering</a>
+        </p>
+      </div>
+    </div>
+
+    <form method="post" class="meal-booking-setup-form meal-catalog-form">
+      {% set course_titles = {'starter': 'Starters', 'main': 'Main courses', 'dessert': 'Desserts'} %}
+      {% for c in courses %}
+        <div class="meal-setup-course-block">
+          <h4 class="public-meal-h4">{{ course_titles[c] }}</h4>
+          <p class="section-note">
+            Leave <strong>Extra (£)</strong> blank for items included in the standard per-head price; enter a supplement (e.g. 2.50) for upgrades.
+          </p>
+          <div class="meal-catalog-grid-head">
+            <span>Dish</span>
+            <span>Extra (£)</span>
+            <span>Veg</span>
+            <span>Offer</span>
+          </div>
+          <div class="meal-setup-option-rows meal-catalog-rows">
+            {% for opt in catalog_by_course[c] %}
+              <div class="meal-catalog-row">
+                <input type="text" name="cat_{{ c }}_label" value="{{ opt.label }}" placeholder="Dish name" aria-label="{{ course_titles[c] }} dish">
+                <input type="text" name="cat_{{ c }}_price" value="{% if opt.price_pence is not none %}{{ '%.2f' % (opt.price_pence / 100) }}{% endif %}" placeholder="—" inputmode="decimal" aria-label="Supplement in GBP">
+                <select name="cat_{{ c }}_veg" aria-label="Vegetarian">
+                  <option value="0" {% if not opt.is_vegetarian %}selected{% endif %}>—</option>
+                  <option value="1" {% if opt.is_vegetarian %}selected{% endif %}>Veg</option>
+                </select>
+                <select name="cat_{{ c }}_active" aria-label="Include when picking for a meeting">
+                  <option value="1" {% if opt.is_active %}selected{% endif %}>Yes</option>
+                  <option value="0" {% if not opt.is_active %}selected{% endif %}>No</option>
+                </select>
+              </div>
+            {% endfor %}
+            {% for _ in range(4) %}
+              <div class="meal-catalog-row meal-catalog-row-new">
+                <input type="text" name="cat_{{ c }}_label" value="" placeholder="Add dish…" aria-label="{{ course_titles[c] }} dish">
+                <input type="text" name="cat_{{ c }}_price" value="" placeholder="—" inputmode="decimal" aria-label="Supplement in GBP">
+                <select name="cat_{{ c }}_veg" aria-label="Vegetarian">
+                  <option value="0" selected>—</option>
+                  <option value="1">Veg</option>
+                </select>
+                <select name="cat_{{ c }}_active" aria-label="Include when picking for a meeting">
+                  <option value="1" selected>Yes</option>
+                  <option value="0">No</option>
+                </select>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <div class="meal-booking-setup-actions">
+        <button type="submit" class="button button-secondary">Save catering menu</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}
