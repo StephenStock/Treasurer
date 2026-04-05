@@ -16,6 +16,7 @@ class HealthzTests(unittest.TestCase):
                 "BACKUP_DATABASE": str(root / "backup.db"),
                 "SECRET_KEY": "test-secret",
                 "RUNTIME_LOCK_ENABLED": False,
+                "LOGIN_DISABLED": False,
             }
         )
         self.client = self.app.test_client()

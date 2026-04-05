@@ -13,17 +13,36 @@
   <header class="site-header">
     <div class="site-header-top {% if active_page == 'balances' %}reports-open{% endif %}">
       <div class="site-header-main-line">
-        <div>
+        <div class="site-header-brand">
           <p class="eyebrow">Treasurer Admin</p>
           <h1>Treasurer</h1>
+          <div class="site-header-user" aria-label="Account">
+            {% if current_user.is_authenticated %}
+              <span class="site-header-user-email">{{ current_user.email }}</span>
+              <a class="site-header-user-link" href="{{ url_for('auth.logout') }}">Sign out</a>
+            {% else %}
+              <a class="site-header-user-link" href="{{ url_for('auth.login') }}">Sign in</a>
+            {% endif %}
+          </div>
         </div>
         <nav class="top-nav" aria-label="Primary">
           <div class="top-nav-row">
+            {% if user_can('page_home') %}
             <a class="nav-link {% if active_page == 'home' %}is-active{% endif %}" href="{{ url_for('main.dashboard') }}">Home</a>
+            {% endif %}
+            {% if user_can('page_statement') %}
             <a class="nav-link {% if active_page == 'statement' %}is-active{% endif %}" href="{{ url_for('main.statement') }}">Statement</a>
+            {% endif %}
+            {% if user_can('page_members') %}
             <a class="nav-link {% if active_page == 'members' %}is-active{% endif %}" href="{{ url_for('main.members') }}">Members</a>
+            {% endif %}
+            {% if user_can('page_bank') %}
             <a class="nav-link {% if active_page == 'bank' %}is-active{% endif %}" href="{{ url_for('main.bank') }}">Bank</a>
+            {% endif %}
+            {% if user_can('page_cash') %}
             <a class="nav-link {% if active_page == 'cash' %}is-active{% endif %}" href="{{ url_for('main.cash') }}">Cash</a>
+            {% endif %}
+            {% if user_can('page_balances') %}
             <button
               class="nav-link report-toggle {% if active_page == 'balances' %}is-active{% endif %}"
               type="button"
@@ -31,9 +50,17 @@
             >
               Sub Accounts
             </button>
+            {% endif %}
+            {% if user_can('page_auditors') %}
             <a class="nav-link {% if active_page == 'auditors' %}is-active{% endif %}" href="{{ url_for('main.auditors') }}">Auditors</a>
+            {% endif %}
+            {% if user_can('page_settings') %}
             <a class="nav-link {% if active_page == 'settings' %}is-active{% endif %}" href="{{ url_for('main.settings') }}">Settings</a>
+            {% endif %}
+            {% if user_can('page_help') %}
             <a class="nav-link {% if active_page == 'help' %}is-active{% endif %}" href="{{ url_for('main.help_page') }}">Help</a>
+            {% endif %}
+            {% if user_can('page_home') %}
             <button
               class="nav-link nav-link-exit"
               type="button"
@@ -42,14 +69,17 @@
             >
               Exit App
             </button>
+            {% endif %}
           </div>
         </nav>
       </div>
+      {% if user_can('page_balances') %}
       <div class="report-nav-row" aria-label="Sub accounts">
         {% for account in balance_nav_accounts %}
           <a class="nav-menu-item {% if active_page == 'balances' and selected_account is defined and selected_account.code == account.code %}is-active{% endif %}" href="{{ url_for('main.balance_sheet', account_code=account.code) }}">{{ account.display_name }}</a>
         {% endfor %}
       </div>
+      {% endif %}
     </div>
   </header>
 

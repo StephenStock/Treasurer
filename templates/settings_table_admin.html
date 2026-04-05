@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Table admin | Treasurer Portal{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Table admin</h3>
+        <p class="section-note">Direct database editing. Take a backup first. Wrong edits can break reports, imports, or sign-in.</p>
+      </div>
+    </div>
+
+    {% if hub %}
+      <p class="section-note">Choose a table to view, edit, add, or delete rows.</p>
+      <div class="settings-admin-links">
+        {% for t in table_links %}
+          <a class="button button-primary" href="{{ url_for('main.settings_table_admin', table_key=t.key) }}">{{ t.label }}</a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <nav class="table-admin-nav" aria-label="Tables">
+        {% for t in table_links %}
+          <a
+            class="button {% if t.key == table %}button-primary{% endif %}"
+            href="{{ url_for('main.settings_table_admin', table_key=t.key) }}"
+          >{{ t.label }}</a>
+        {% endfor %}
+      </nav>
+
+      <section class="attention-banner attention-banner-error" role="note">
+        <strong>Editing {{ table_label }}.</strong>
+        Foreign keys and unique indexes apply. Deleting bank rows may remove linked allocations or fail if still referenced.
+      </section>
+
+      {% if total_pages > 1 %}
+        <p class="section-note table-admin-page-meta">
+          Page {{ page }} of {{ total_pages }} — {{ total_rows }} rows total ({{ page_size }} per page).
+        </p>
+        <nav class="table-admin-pagination section-note" aria-label="Pagination">
+          {% if page > 1 %}
+            <a href="{{ url_for('main.settings_table_admin', table_key=table, page=page - 1) }}">Previous</a>
+          {% endif %}
+          {% if page < total_pages %}
+            <a href="{{ url_for('main.settings_table_admin', table_key=table, page=page + 1) }}">Next</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+
+      {% for row in rows %}
+        <form
+          id="form-u{{ row['id'] }}"
+          method="post"
+          action="{{ url_for('main.settings_table_admin', table_key=table, page=page) }}"
+          class="table-admin-row-form"
+        ></form>
+      {% endfor %}
+
+      <div class="table-scroll table-admin-wrap">
+        <table class="settings-table compact-ledger table-admin-table">
+          <thead>
+            <tr>
+              <th scope="col">id</th>
+              {% for col in columns %}
+                {% if col.name != 'id' %}
+                  <th scope="col" title="{{ col.type or '' }}">{{ col.name }}</th>
+                {% endif %}
+              {% endfor %}
+              {% if table == 'users' %}
+                <th scope="col">password (plain)</th>
+              {% endif %}
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td class="table-admin-id-cell">{{ row['id'] }}</td>
+                {% for col in columns %}
+                  {% if col.name != 'id' %}
+                    <td>
+                      {% set fname = 'u' ~ row['id'] ~ '_' ~ col.name %}
+                      {% if col.name in textarea_cols %}
+                        <textarea name="{{ fname }}" rows="2" cols="28" class="table-admin-textarea" form="form-u{{ row['id'] }}">{{ row[col.name] if row[col.name] is not none else '' }}</textarea>
+                      {% else %}
+                        <input type="text" name="{{ fname }}" value="{{ row[col.name] if row[col.name] is not none else '' }}" form="form-u{{ row['id'] }}">
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                {% endfor %}
+                {% if table == 'users' %}
+                  <td>
+                    <input
+                      type="password"
+                      name="u{{ row['id'] }}_password_plain"
+                      autocomplete="new-password"
+                      placeholder="Optional"
+                      form="form-u{{ row['id'] }}"
+                    >
+                  </td>
+                {% endif %}
+                <td class="table-admin-actions">
+                  <input type="hidden" name="action" value="update" form="form-u{{ row['id'] }}">
+                  <input type="hidden" name="row_id" value="{{ row['id'] }}" form="form-u{{ row['id'] }}">
+                  <button type="submit" class="button button-primary" form="form-u{{ row['id'] }}">Save</button>
+                  <form
+                    method="post"
+                    action="{{ url_for('main.settings_table_admin', table_key=table, page=page) }}"
+                    class="table-admin-delete-form"
+                    onsubmit="return confirm('Delete row id {{ row['id'] }}? This cannot be undone.');"
+                  >
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="row_id" value="{{ row['id'] }}">
+                    <button type="submit" class="button">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if total_pages > 1 %}
+        <nav class="table-admin-pagination section-note" aria-label="Pagination">
+          {% if page > 1 %}
+            <a href="{{ url_for('main.settings_table_admin', table_key=table, page=page - 1) }}">Previous</a>
+          {% endif %}
+          {% if page < total_pages %}
+            <a href="{{ url_for('main.settings_table_admin', table_key=table, page=page + 1) }}">Next</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+
+      <section class="table-admin-insert">
+        <h4 class="settings-subheading">Add row</h4>
+        <form method="post" action="{{ url_for('main.settings_table_admin', table_key=table, page=page) }}" class="settings-form">
+          <input type="hidden" name="action" value="insert">
+          <div class="table-scroll">
+            <table class="settings-table compact-ledger table-admin-table">
+              <thead>
+                <tr>
+                  {% for col in columns %}
+                    {% if col.name != 'id' %}
+                      <th scope="col">{{ col.name }}</th>
+                    {% endif %}
+                  {% endfor %}
+                  {% if table == 'users' %}
+                    <th scope="col">password (plain)</th>
+                  {% endif %}
+                  <th scope="col"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {% for col in columns %}
+                    {% if col.name != 'id' %}
+                      <td>
+                        {% set fname = 'ins_' ~ col.name %}
+                        {% if col.name in textarea_cols %}
+                          <textarea name="{{ fname }}" rows="2" class="table-admin-textarea"></textarea>
+                        {% else %}
+                          <input type="text" name="{{ fname }}" value="">
+                        {% endif %}
+                      </td>
+                    {% endif %}
+                  {% endfor %}
+                  {% if table == 'users' %}
+                    <td>
+                      <input type="password" name="ins_password_plain" autocomplete="new-password" placeholder="10+ chars or use hash column">
+                    </td>
+                  {% endif %}
+                  <td><button type="submit" class="button button-primary">Add row</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </form>
+      </section>
+    {% endif %}
+
+    <p class="section-note">
+      <a href="{{ url_for('main.settings') }}">Back to Settings</a>
+    </p>
+  </section>
+{% endblock %}

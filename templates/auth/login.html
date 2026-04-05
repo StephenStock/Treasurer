@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in | Treasurer Portal{% endblock %}
+
+{% block content %}
+  <section class="panel auth-panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Sign in</h3>
+        <p class="section-note">Use the email and password issued for this lodge portal.</p>
+      </div>
+    </div>
+    <form method="post" class="settings-form auth-form" action="{{ url_for('auth.login') }}">
+      {% if next_url %}
+        <input type="hidden" name="next" value="{{ next_url }}">
+      {% endif %}
+      <div class="settings-single-field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="username" required autofocus>
+      </div>
+      <div class="settings-single-field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <div class="settings-single-field auth-remember">
+        <label class="checkbox-label">
+          <input type="checkbox" name="remember" value="1">
+          Stay signed in on this device
+        </label>
+      </div>
+      <div class="settings-actions">
+        <button type="submit" class="button button-primary">Sign in</button>
+        <a class="button" href="{{ url_for('auth.forgot_password') }}">Forgot password</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

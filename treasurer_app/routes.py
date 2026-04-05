@@ -2,12 +2,13 @@ import os
 import platform
 import sqlite3
 import subprocess
-import threading
 import tempfile
-from datetime import date, datetime
+import threading
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for
+from werkzeug.security import generate_password_hash
 
 from .backup_mirror_health import clear_failure as clear_backup_mirror_failure
 from .backup_mirror_health import record_failure as record_backup_mirror_failure
@@ -35,6 +36,7 @@ from .db import (
     insert_manual_virtual_account_transfer,
     list_virtual_account_transfers_for_account,
     replace_bank_transaction_allocations,
+    replace_live_database_file,
     replace_virtual_account_category_map,
     seed_meeting_schedule,
     seed_virtual_account_balances,
@@ -46,13 +48,25 @@ from .db import (
     release_runtime_lock,
     set_app_setting,
     virtual_account_report,
-    table_exists,
     update_virtual_account_transfer,
     virtual_account_transfer_involves_account,
     _normalize_member_name,
+    verify_sqlite_database_file,
     virtual_account_category_mappings,
 )
-
+from .auth_store import (
+    create_user_row,
+    fetch_user_by_email,
+    list_roles,
+    list_users_with_roles,
+    role_permissions_matrix,
+    set_role_permission,
+    set_user_active,
+    update_user_password,
+    update_user_role,
+)
+from .login_config import permission_required
+from . import table_admin as ta
 
 main_bp = Blueprint("main", __name__)
 
@@ -72,27 +86,6 @@ def _signal_launcher_exit() -> None:
         _launcher_exit_signal_path().write_text(datetime.utcnow().isoformat(), encoding="utf-8")
     except Exception:
         pass
-
-
-@main_bp.app_context_processor
-def inject_balance_nav_accounts():
-    try:
-        db = get_db()
-        if not table_exists(db, "virtual_accounts"):
-            return {"balance_nav_accounts": []}
-        return {"balance_nav_accounts": virtual_account_report(db)}
-    except Exception:
-        return {"balance_nav_accounts": []}
-
-
-@main_bp.app_context_processor
-def inject_backup_mirror_health():
-    from flask import current_app
-
-    return {
-        "backup_mirror_error": current_app.config.get("BACKUP_LAST_ERROR"),
-        "backup_mirror_error_at": current_app.config.get("BACKUP_LAST_ERROR_AT"),
-    }
 
 
 def _lodge_display_name(db: sqlite3.Connection) -> str:
@@ -916,6 +909,7 @@ def _runtime_lock_context():
 
 
 @main_bp.route("/")
+@permission_required("page_home")
 def dashboard():
     db = get_db()
     backup_status = _backup_status_context()
@@ -967,11 +961,13 @@ def _handle_app_exit():
 
 
 @main_bp.post("/app/exit")
+@permission_required("page_home")
 def exit_app():
     return _handle_app_exit()
 
 
 @main_bp.post("/backup/run")
+@permission_required("page_settings")
 def run_backup_now():
     db = get_db()
     database_path = Path(current_app.config["DATABASE"])
@@ -1003,6 +999,7 @@ def run_backup_now():
 
 
 @main_bp.get("/backup/open-folder")
+@permission_required("page_settings")
 def open_backup_folder():
     """Open the resolved mirrored-backup folder in the system file manager (local use)."""
     database_path = Path(current_app.config["DATABASE"])
@@ -1026,6 +1023,7 @@ def open_backup_folder():
 
 
 @main_bp.post("/backup/restore")
+@permission_required("page_settings")
 def restore_backup():
     db = get_db()
     database_path = Path(current_app.config["DATABASE"])
@@ -1049,12 +1047,112 @@ def restore_backup():
     return redirect(url_for("main.dashboard"))
 
 
+DATABASE_UPLOAD_MAX_BYTES = 128 * 1024 * 1024
+
+
+@main_bp.get("/settings/database/download")
+@permission_required("page_settings")
+def download_database():
+    """Download a consistent snapshot of the live SQLite file (for off-server / local backup)."""
+    db = get_db()
+    primary_path = Path(current_app.config["DATABASE"])
+    fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    tmp_fp = Path(tmp_path)
+    try:
+        backup_database(db, tmp_fp, primary_path=primary_path)
+        db.commit()
+    except Exception as exc:
+        tmp_fp.unlink(missing_ok=True)
+        flash(f"Could not prepare a database file for download: {exc}", "error")
+        return redirect(url_for("main.settings"))
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    response = send_file(
+        tmp_fp,
+        as_attachment=True,
+        download_name=f"Treasurer-{stamp}.db",
+        mimetype="application/vnd.sqlite3",
+        max_age=0,
+    )
+
+    # Do not use after_this_request: it can run before the response body is streamed, deleting
+    # the temp file while send_file still needs it (500 / empty download on Windows especially).
+    path_to_remove = tmp_fp
+
+    def _unlink_after_send() -> None:
+        try:
+            path_to_remove.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    response.call_on_close(_unlink_after_send)
+    return response
+
+
+@main_bp.post("/settings/database/upload")
+@permission_required("page_settings")
+def upload_database():
+    """Replace the live database with an uploaded .db file (e.g. restore from a local PC copy)."""
+    upload = request.files.get("database_file")
+    if upload is None or not (upload.filename or "").strip():
+        flash("Choose a database file (.db) to upload.", "error")
+        return redirect(url_for("main.settings"))
+    name = (upload.filename or "").strip()
+    if not name.lower().endswith(".db"):
+        flash("The file must be a SQLite database with a .db extension.", "error")
+        return redirect(url_for("main.settings"))
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    tmp_fp = Path(tmp_path)
+    try:
+        upload.save(tmp_fp)
+        size = tmp_fp.stat().st_size
+        if size == 0:
+            flash("The uploaded file is empty.", "error")
+            return redirect(url_for("main.settings"))
+        if size > DATABASE_UPLOAD_MAX_BYTES:
+            flash(
+                f"That file is too large (max {DATABASE_UPLOAD_MAX_BYTES // (1024 * 1024)} MB).",
+                "error",
+            )
+            return redirect(url_for("main.settings"))
+        if not verify_sqlite_database_file(tmp_fp):
+            flash("That file is not a valid SQLite database.", "error")
+            return redirect(url_for("main.settings"))
+
+        db = get_db()
+        db.commit()
+        close_db()
+
+        primary_path = Path(current_app.config["DATABASE"])
+        try:
+            prev = replace_live_database_file(primary_path, tmp_fp)
+        except OSError as exc:
+            flash(f"Could not replace the database file: {exc}", "error")
+            return redirect(url_for("main.settings"))
+
+        if prev is not None:
+            flash(
+                f"Database replaced. The previous file was saved next to the live database as {prev.name}.",
+                "success",
+            )
+        else:
+            flash("Database file installed.", "success")
+        return redirect(url_for("main.settings"))
+    finally:
+        tmp_fp.unlink(missing_ok=True)
+
+
 @main_bp.route("/bank")
+@permission_required("page_bank")
 def bank():
     return render_template("bank.html", active_page="bank", **_bank_page_context())
 
 
 @main_bp.post("/bank/import")
+@permission_required("page_bank")
 def bank_import():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1098,6 +1196,7 @@ def bank_import():
 
 
 @main_bp.post("/bank/rebuild")
+@permission_required("page_bank")
 def bank_rebuild_from_workbook():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1137,6 +1236,7 @@ def bank_rebuild_from_workbook():
 
 
 @main_bp.post("/bank/<int:transaction_id>/assign")
+@permission_required("page_bank")
 def bank_assign(transaction_id: int):
     db = get_db()
     category_ids = request.form.getlist("allocation_category_id")
@@ -1204,6 +1304,7 @@ def bank_assign(transaction_id: int):
 
 
 @main_bp.post("/bank/<int:transaction_id>/settle")
+@permission_required("page_bank")
 def bank_transaction_settle(transaction_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1298,6 +1399,7 @@ def bank_transaction_settle(transaction_id: int):
 
 
 @main_bp.post("/bank/<int:transaction_id>/unsettle")
+@permission_required("page_bank")
 def bank_transaction_unsettle(transaction_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1338,6 +1440,7 @@ def bank_transaction_unsettle(transaction_id: int):
 
 
 @main_bp.route("/statement")
+@permission_required("page_statement")
 def statement():
     return render_template(
         "statement.html",
@@ -1515,6 +1618,7 @@ def _auditors_member_payment_block(db, reporting_period_id: int) -> dict:
 
 
 @main_bp.route("/auditors")
+@permission_required("page_auditors")
 def auditors():
     return render_template(
         "auditors.html",
@@ -1524,6 +1628,7 @@ def auditors():
 
 
 @main_bp.route("/balances/")
+@permission_required("page_balances")
 def balances_index():
     db = get_db()
     accounts = virtual_account_report(db)
@@ -1532,6 +1637,7 @@ def balances_index():
 
 
 @main_bp.route("/balances/<account_code>")
+@permission_required("page_balances")
 def balance_sheet(account_code: str):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1573,11 +1679,13 @@ def balance_sheet(account_code: str):
 
 
 @main_bp.route("/cash")
+@permission_required("page_cash")
 def cash():
     return render_template("cash.html", active_page="cash", **_cash_page_context())
 
 
 @main_bp.post("/cash/settle")
+@permission_required("page_cash")
 def cash_settle():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1647,6 +1755,7 @@ def cash_settle():
 
 
 @main_bp.post("/cash/entries/add")
+@permission_required("page_cash")
 def cash_entry_add():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1704,6 +1813,7 @@ def cash_entry_add():
 
 
 @main_bp.post("/cash/entries/<int:entry_id>/update")
+@permission_required("page_cash")
 def cash_entry_update(entry_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1795,6 +1905,7 @@ def cash_entry_update(entry_id: int):
 
 
 @main_bp.post("/cash/entries/<int:entry_id>/delete")
+@permission_required("page_cash")
 def cash_entry_delete(entry_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1816,11 +1927,13 @@ def cash_entry_delete(entry_id: int):
 
 
 @main_bp.route("/members")
+@permission_required("page_members")
 def members():
     return render_template("members.html", active_page="members", **_members_page_context())
 
 
 @main_bp.post("/members/<int:member_id>/dues")
+@permission_required("page_members")
 def update_member_dues(member_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -1899,6 +2012,7 @@ def update_member_dues(member_id: int):
 
 
 @main_bp.route("/help")
+@permission_required("page_help")
 def help_page():
     return render_template(
         "placeholder.html",
@@ -1909,6 +2023,7 @@ def help_page():
 
 
 @main_bp.route("/forms")
+@permission_required("page_forms")
 def forms():
     return render_template(
         "placeholder.html",
@@ -1919,6 +2034,7 @@ def forms():
 
 
 @main_bp.route("/settings", methods=["GET", "POST"])
+@permission_required("page_settings")
 def settings():
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2026,6 +2142,239 @@ def settings():
     )
 
 
+@main_bp.route("/settings/portal-users", methods=["GET", "POST"])
+@permission_required("admin_users")
+def settings_portal_users():
+    db = get_db()
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        if action == "create":
+            email = (request.form.get("email") or "").strip()
+            password = request.form.get("password") or ""
+            role_id = request.form.get("role_id", type=int)
+            if not email or "@" not in email:
+                flash("Enter a valid email address.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            if len(password) < 10:
+                flash("Password must be at least 10 characters.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            if role_id is None:
+                flash("Choose a role.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            if fetch_user_by_email(db, email):
+                flash("That email is already registered.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            create_user_row(db, email, generate_password_hash(password), role_id)
+            db.commit()
+            flash("User created.", "success")
+            return redirect(url_for("main.settings_portal_users"))
+
+        if action == "update":
+            user_id = request.form.get("user_id", type=int)
+            role_id = request.form.get("role_id", type=int)
+            active = request.form.get("active") == "1"
+            new_password = (request.form.get("new_password") or "").strip()
+            if user_id is None or role_id is None:
+                flash("Invalid form.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            target = db.execute(
+                "SELECT id, email FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if target is None:
+                flash("User not found.", "error")
+                return redirect(url_for("main.settings_portal_users"))
+            update_user_role(db, user_id, role_id)
+            set_user_active(db, user_id, active)
+            if new_password:
+                if len(new_password) < 10:
+                    flash("New password must be at least 10 characters.", "error")
+                    return redirect(url_for("main.settings_portal_users"))
+                update_user_password(db, user_id, generate_password_hash(new_password))
+            db.commit()
+            flash("User updated.", "success")
+            return redirect(url_for("main.settings_portal_users"))
+
+    users = list_users_with_roles(db)
+    roles = list_roles(db)
+    return render_template(
+        "settings_portal_users.html",
+        active_page="settings",
+        portal_users=users,
+        portal_roles=roles,
+        **_backup_status_context(),
+    )
+
+
+@main_bp.route("/settings/role-permissions", methods=["GET", "POST"])
+@permission_required("admin_role_permissions")
+def settings_role_permissions():
+    db = get_db()
+    if request.method == "POST":
+        roles, perm_list, _ = role_permissions_matrix(db)
+        for role in roles:
+            for perm in perm_list:
+                key = f"allow_{role['id']}_{perm['id']}"
+                allowed = request.form.get(key) == "1"
+                set_role_permission(db, int(role["id"]), int(perm["id"]), allowed)
+        db.commit()
+        flash("Role permissions saved.", "success")
+        return redirect(url_for("main.settings_role_permissions"))
+
+    roles, perm_list, matrix = role_permissions_matrix(db)
+    # Flatten for templates: Jinja 3 LoopContext may not expose parent/parentloop on all builds.
+    perm_rows = []
+    for pj, perm in enumerate(perm_list):
+        cells = []
+        for ri, role in enumerate(roles):
+            cells.append(
+                {
+                    "role": role,
+                    "perm": perm,
+                    "checked": matrix[ri][pj],
+                }
+            )
+        perm_rows.append({"perm": perm, "cells": cells})
+    return render_template(
+        "settings_role_permissions.html",
+        active_page="settings",
+        perm_roles=roles,
+        perm_list=perm_list,
+        perm_rows=perm_rows,
+        **_backup_status_context(),
+    )
+
+
+def _table_admin_apply_users_password(table: str, form, prefix: str, values: dict, *, for_insert: bool) -> None:
+    """Apply optional plain password for `users` rows; mutates `values`."""
+    if table != "users":
+        return
+    plain = (form.get(f"{prefix}password_plain") or "").strip()
+    if plain:
+        if len(plain) < 10:
+            raise ValueError("Password must be at least 10 characters.")
+        values["password_hash"] = generate_password_hash(plain)
+        return
+    if for_insert:
+        ph = values.get("password_hash")
+        if ph is None or (isinstance(ph, str) and not ph.strip()):
+            raise ValueError("For a new user, set a plain password (10+ characters) or paste a password hash.")
+    elif values.get("password_hash") is None:
+        values.pop("password_hash", None)
+
+
+@main_bp.route("/settings/table-admin", methods=["GET", "POST"])
+@main_bp.route("/settings/table-admin/<string:table_key>", methods=["GET", "POST"])
+@permission_required("admin_table_editor")
+def settings_table_admin(table_key: str | None = None):
+    """Direct editing of allowlisted SQLite tables (power users; can break referential data)."""
+    db = get_db()
+
+    if request.method == "POST":
+        tkey = (request.view_args or {}).get("table_key") or table_key
+        if not tkey:
+            flash("Open Table admin from Settings and pick a table.", "error")
+            return redirect(url_for("main.settings_table_admin"))
+        try:
+            table = ta.assert_table_allowed(tkey)
+        except ValueError:
+            flash("Invalid table.", "error")
+            return redirect(url_for("main.settings_table_admin"))
+        cols = ta.fetch_column_info(db, table)
+        action = (request.form.get("action") or "").strip()
+        page_q = request.args.get("page", type=int)
+        redirect_args: dict = {}
+        if page_q and page_q > 1:
+            redirect_args["page"] = page_q
+
+        try:
+            if action == "delete":
+                row_id = request.form.get("row_id", type=int)
+                if row_id is None:
+                    flash("Missing row id.", "error")
+                else:
+                    ta.delete_row_by_pk(db, table, cols, row_id)
+                    db.commit()
+                    flash("Row deleted.", "success")
+            elif action == "update":
+                row_id = request.form.get("row_id", type=int)
+                if row_id is None:
+                    flash("Missing row id.", "error")
+                else:
+                    prefix = f"u{row_id}_"
+                    values = ta.row_values_from_form(cols, request.form, prefix, for_insert=False)
+                    _table_admin_apply_users_password(table, request.form, prefix, values, for_insert=False)
+                    ta.update_row_by_pk(db, table, cols, row_id, values)
+                    db.commit()
+                    flash("Row updated.", "success")
+            elif action == "insert":
+                values = ta.row_values_from_form(cols, request.form, "ins_", for_insert=True)
+                _table_admin_apply_users_password(table, request.form, "ins_", values, for_insert=True)
+                values = ta.insert_omit_sql_defaults(cols, values)
+                errs = ta.validate_required_for_insert(cols, values)
+                if errs:
+                    for e in errs:
+                        flash(e, "error")
+                else:
+                    ta.insert_row(db, table, cols, values)
+                    db.commit()
+                    flash("Row added.", "success")
+            else:
+                flash("Unknown action.", "error")
+        except ValueError as exc:
+            flash(str(exc), "error")
+        except sqlite3.IntegrityError:
+            flash(
+                "That change could not be applied (unique value, foreign key, or related rows).",
+                "error",
+            )
+        return redirect(url_for("main.settings_table_admin", table_key=table, **redirect_args))
+
+    if not table_key:
+        table_links = [{"key": k, "label": ta.TABLE_LABELS[k]} for k in ta.TABLE_ADMIN_ORDER if k in ta.TABLE_ADMIN_ALLOWLIST]
+        return render_template(
+            "settings_table_admin.html",
+            active_page="settings",
+            hub=True,
+            table_links=table_links,
+            **_backup_status_context(),
+        )
+
+    try:
+        table = ta.assert_table_allowed(table_key)
+    except ValueError:
+        flash("Invalid table.", "error")
+        return redirect(url_for("main.settings_table_admin"))
+
+    cols = ta.fetch_column_info(db, table)
+    textarea_cols = ta.TEXTAREA_COLUMNS.get(table, frozenset())
+    page_size = ta.TABLE_PAGE_SIZE.get(table, 100)
+    total_rows = ta.count_rows(db, table)
+    total_pages = max(1, (total_rows + page_size - 1) // page_size)
+    page = request.args.get("page", type=int) or 1
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * page_size
+    rows = ta.fetch_page(db, table, limit=page_size, offset=offset)
+    table_links = [{"key": k, "label": ta.TABLE_LABELS[k]} for k in ta.TABLE_ADMIN_ORDER if k in ta.TABLE_ADMIN_ALLOWLIST]
+
+    return render_template(
+        "settings_table_admin.html",
+        active_page="settings",
+        hub=False,
+        table=table,
+        table_label=ta.TABLE_LABELS[table],
+        table_links=table_links,
+        columns=cols,
+        textarea_cols=textarea_cols,
+        rows=rows,
+        page=page,
+        total_pages=total_pages,
+        total_rows=total_rows,
+        page_size=page_size,
+        **_backup_status_context(),
+    )
+
+
 def _virtual_account_id_for_code(db: sqlite3.Connection, code: str) -> int | None:
     row = db.execute(
         "SELECT id FROM virtual_accounts WHERE UPPER(TRIM(code)) = UPPER(TRIM(?))",
@@ -2039,6 +2388,7 @@ def _balance_subaccount_transfers_redirect(account_code: str) -> str:
 
 
 @main_bp.post("/balances/<account_code>/transfers/add")
+@permission_required("page_balances")
 def balance_transfer_add(account_code: str):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2098,6 +2448,7 @@ def balance_transfer_add(account_code: str):
 
 
 @main_bp.post("/balances/<account_code>/transfers/<int:transfer_id>/update")
+@permission_required("page_balances")
 def balance_transfer_update(account_code: str, transfer_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2161,6 +2512,7 @@ def balance_transfer_update(account_code: str, transfer_id: int):
 
 
 @main_bp.post("/balances/<account_code>/transfers/<int:transfer_id>/delete")
+@permission_required("page_balances")
 def balance_transfer_delete(account_code: str, transfer_id: int):
     db = get_db()
     reporting_period_id = _current_reporting_period_id()
@@ -2192,5 +2544,6 @@ def balance_transfer_delete(account_code: str, transfer_id: int):
 
 
 @main_bp.post("/__shutdown")
+@permission_required("page_home")
 def shutdown_app():
     return _handle_app_exit()

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Portal users | Treasurer Portal{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Portal users</h3>
+        <p class="section-note">Create accounts and assign roles. Passwords must be at least 10 characters. Disabled users cannot sign in.</p>
+      </div>
+    </div>
+
+    <section class="settings-section">
+      <h4 class="settings-subheading">Add user</h4>
+      <form method="post" class="settings-form portal-user-create">
+        <input type="hidden" name="action" value="create">
+        <div class="portal-user-create-grid">
+          <div class="settings-single-field">
+            <label for="new_email">Email</label>
+            <input type="email" id="new_email" name="email" autocomplete="off" required>
+          </div>
+          <div class="settings-single-field">
+            <label for="new_password">Initial password</label>
+            <input type="password" id="new_password" name="password" autocomplete="new-password" minlength="10" required>
+          </div>
+          <div class="settings-single-field">
+            <label for="new_role">Role</label>
+            <select id="new_role" name="role_id" required>
+              {% for role in portal_roles %}
+                <option value="{{ role.id }}">{{ role.display_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="settings-single-field portal-user-create-actions">
+            <button type="submit" class="button button-primary">Create user</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="settings-section">
+      <h4 class="settings-subheading">Existing users</h4>
+      {% if portal_users %}
+        <div class="portal-user-list-scroll">
+          <div class="portal-user-list" role="group" aria-label="Existing portal users">
+            <div class="portal-user-list-head">
+              <span>Email</span>
+              <span>Role</span>
+              <span>Active</span>
+              <span>New password</span>
+              <span class="portal-user-list-head-actions">Actions</span>
+            </div>
+            {% for u in portal_users %}
+              <form method="post" class="portal-user-row">
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <div class="portal-user-row-email">{{ u.email }}</div>
+                <div class="settings-single-field portal-user-row-field">
+                  <label class="sr-only" for="role-{{ u.id }}">Role</label>
+                  <select id="role-{{ u.id }}" name="role_id">
+                    {% for role in portal_roles %}
+                      <option value="{{ role.id }}" {% if role.id == u.role_id %}selected{% endif %}>{{ role.display_name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="portal-user-row-active">
+                  <input type="checkbox" name="active" value="1" {% if u.active %}checked{% endif %} aria-label="Account active">
+                </div>
+                <div class="settings-single-field portal-user-row-field">
+                  <label class="sr-only" for="pw-{{ u.id }}">New password (optional)</label>
+                  <input type="password" id="pw-{{ u.id }}" name="new_password" autocomplete="new-password" placeholder="Leave blank to keep current" minlength="10">
+                </div>
+                <div class="portal-user-row-actions">
+                  <button type="submit" class="button button-primary">Save</button>
+                </div>
+              </form>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <p class="section-note">No users yet. Create the first account above, or set <code>TREASURER_BOOTSTRAP_ADMIN_EMAIL</code> / <code>TREASURER_BOOTSTRAP_ADMIN_PASSWORD</code> on first run.</p>
+      {% endif %}
+    </section>
+
+    <p class="section-note">
+      <a href="{{ url_for('main.settings') }}">Back to Settings</a>
+    </p>
+  </section>
+{% endblock %}

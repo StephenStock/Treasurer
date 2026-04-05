@@ -58,8 +58,10 @@ Repository layout for deployment:
    - **`SECRET_KEY`** — long random string (see comment in `.env.example`).
    - **`SITE_ADDRESS`** — `:80` for HTTP-only tests, or `treasurer.example.com` for automatic HTTPS (Caddy).
    - Paths default to `/data/...` and match `docker-compose.yml`.
+   - **First sign-in:** if the database has **no users**, optionally set **`TREASURER_BOOTSTRAP_ADMIN_EMAIL`** and **`TREASURER_BOOTSTRAP_ADMIN_PASSWORD`** (≥ 10 characters) so the first startup creates an **Admin** user. Otherwise create accounts from the app after an admin exists, or use a controlled one-off SQL/script (see `docs/Runbook.md`).
+   - Optional **SMTP** (`MAIL_SERVER`, `MAIL_PORT`, etc.) so **forgot password** can send email; without it, reset links may only appear in flash messages (not suitable for untrusted networks).
 4. `docker compose up -d --build`
-5. `./scripts/healthcheck.sh`
+5. `./scripts/healthcheck.sh` (uses **`GET /healthz`**, which does not require authentication)
 
 ## Deploy procedure
 
@@ -115,7 +117,7 @@ Rollback assumes the previous revision is **compatible** with the existing SQLit
 
 ## Backup and restore
 
-**Backup (on demand or cron):**
+**Host-side tar (full `/data` volume):**
 
 ```bash
 cd /opt/treasurer
@@ -131,6 +133,15 @@ Archives land in `backups/treasurer-db-*.tar`. Copy them **off-server** (another
 ```
 
 Stops the app container briefly, restores `/data`, restarts, health-checks.
+
+**In-app SQLite file (Settings → Copy database file):**
+
+- **Download database file** — saves a consistent snapshot of the live `Treasurer.db` through your browser (e.g. to your laptop). Use this for an extra off-server copy without SSH.
+- **Upload and replace database** — replaces the live database with the chosen `.db` file. The previous file is copied aside in the same folder as `Treasurer.before-restore.<UTC stamp>.db`. Use when promoting data from a local PC to the server or restoring a known-good copy.
+
+**Deployment and data survival:** `docker compose up -d --build` does **not** remove the named volume `treasurer-data`; your SQLite files under `/data` in the container persist across deploys. Only `docker compose down -v`, deleting the volume manually, or restoring from backup will replace that data.
+
+**Cash book vs local Excel:** the app can **seed** cash book rows from the treasurer workbook in the project root **only** when that workbook exists on the machine **and** the cash book table was empty. A typical server has **no** workbook, so you will not see those seeded rows there unless you enter them in the **Cash** UI or **upload** a database that already contains them (from local or from backup).
 
 ## Patching routine
 
@@ -168,7 +179,7 @@ Document *who* ran *what* and *why* when manual SQL is unavoidable.
 ## Known risks / gotchas
 
 - **SQLite + multi-worker Gunicorn:** the image uses **one worker** by design. Do not raise worker count without moving off SQLite.
-- **No application login:** restrict by network; do not expose port 8000 publicly (only via Caddy on 80/443).
+- **Application login:** the app requires **sign-in** for normal pages (`/auth/login`). **Roles** (Secretary, Treasurer, Auditor, Admin, Charity Steward, Master) exist; **route-level permission enforcement is not fully wired yet** — treat network exposure as sensitive until you are comfortable with that model. Do not expose the app container port **8000** directly to the internet; use **Caddy** on **80/443** only.
 - **`SECRET_KEY`:** must be set in production; sessions and CSRF rely on it.
 - **Runtime lock (`TREASURER_RUNTIME_LOCK`):** intended for single-desktop use; keep **off** on the server unless you understand the implications.
 - **Case sensitivity:** this repo is developed on Windows; deployment paths are Linux — avoid mixed-case assumptions in scripts.
@@ -177,6 +188,7 @@ Document *who* ran *what* and *why* when manual SQL is unavoidable.
 
 - Hostname, TLS certificates, and **off-site** backup destination.
 - **PostgreSQL** migration (not started in code).
+- Optional: **finer-grained** rules inside a page (beyond the role matrix) if needed later.
 - Optional: CI job to build/push images, log aggregation, Uptime Kuma, etc.
 
 ## Related documents
@@ -190,3 +202,4 @@ Document *who* ran *what* and *why* when manual SQL is unavoidable.
 | Date | Change |
 | --- | --- |
 | 2026-04-03 | Initial Hetzner Docker runbook and scripts. |
+| 2026-04-03 | Documented portal sign-in, bootstrap admin, optional mail, `/healthz` unauthenticated, and replaced outdated “no application login” note. |

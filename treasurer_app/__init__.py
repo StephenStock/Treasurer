@@ -3,8 +3,11 @@ import threading
 from pathlib import Path
 
 from flask import Flask, current_app, flash, redirect, render_template, request, url_for
+from flask_login import current_user
 from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.security import generate_password_hash
 
+from .auth_routes import auth_bp
 from .backup_mirror_health import clear_failure as _clear_backup_mirror_failure
 from .backup_mirror_health import record_failure as _record_backup_mirror_failure
 from .db import (
@@ -35,10 +38,11 @@ from .db import (
     remove_legacy_visitor_member,
     table_exists,
 )
+from .login_config import init_login_manager, user_can
 from .routes import main_bp
 
-# Whole POST body limit for bank CSV uploads (multipart total).
-MAX_BANK_IMPORT_REQUEST_BYTES = 12 * 1024 * 1024
+# Whole POST body limit for bank CSV uploads and Settings database upload (multipart total).
+MAX_BANK_IMPORT_REQUEST_BYTES = 128 * 1024 * 1024
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -55,6 +59,13 @@ def create_app(test_config: dict | None = None) -> Flask:
         BACKUP_DATABASE=str(os.environ.get("TREASURER_BACKUP_DATABASE", "")),
         RUNTIME_LOCK_ENABLED=os.environ.get("TREASURER_RUNTIME_LOCK", "").strip().lower() in {"1", "true", "yes", "on"},
         MAX_CONTENT_LENGTH=MAX_BANK_IMPORT_REQUEST_BYTES,
+        LOGIN_DISABLED=os.environ.get("TREASURER_LOGIN_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"},
+        MAIL_SERVER=os.environ.get("MAIL_SERVER", "").strip(),
+        MAIL_PORT=int(os.environ.get("MAIL_PORT", "587") or 587),
+        MAIL_USE_TLS=os.environ.get("MAIL_USE_TLS", "true").strip().lower() in {"1", "true", "yes", "on"},
+        MAIL_USERNAME=os.environ.get("MAIL_USERNAME", "").strip(),
+        MAIL_PASSWORD=os.environ.get("MAIL_PASSWORD", ""),
+        MAIL_DEFAULT_SENDER=os.environ.get("MAIL_DEFAULT_SENDER", "").strip(),
     )
 
     runtime_identity = runtime_lock_identity()
@@ -92,6 +103,26 @@ def create_app(test_config: dict | None = None) -> Flask:
         _record_backup_mirror_failure(app, exc, detail="Startup database sync with backup failed.")
     init_app(app)
     app.teardown_appcontext(close_db)
+    init_login_manager(app)
+
+    @app.context_processor
+    def _inject_global_template_context():
+        from .db import get_db, table_exists, virtual_account_report
+
+        try:
+            db = get_db()
+            nav = virtual_account_report(db) if table_exists(db, "virtual_accounts") else []
+        except Exception:
+            nav = []
+        return {
+            "balance_nav_accounts": nav,
+            "backup_mirror_error": current_app.config.get("BACKUP_LAST_ERROR"),
+            "backup_mirror_error_at": current_app.config.get("BACKUP_LAST_ERROR_AT"),
+        }
+
+    @app.context_processor
+    def _inject_permission_helpers():
+        return {"user_can": user_can}
 
     @app.before_request
     def enforce_runtime_lock():
@@ -156,6 +187,22 @@ def create_app(test_config: dict | None = None) -> Flask:
                     threading.Thread(target=_runtime_lock_heartbeat, name="runtime-lock-heartbeat", daemon=True).start()
         return None
 
+    @app.before_request
+    def require_login():
+        if current_app.config.get("LOGIN_DISABLED"):
+            return None
+        if not request.endpoint:
+            return None
+        if request.endpoint == "static":
+            return None
+        if request.blueprint == "auth":
+            return None
+        if request.endpoint == "main.healthz":
+            return None
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login", next=request.url))
+        return None
+
     @app.after_request
     def mirror_database(response):
         if request.method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400:
@@ -177,7 +224,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     def request_entity_too_large(_e):
         flash(
             f"That upload is too large (about {MAX_BANK_IMPORT_REQUEST_BYTES // (1024 * 1024)} MB max per request). "
-            "The usual cause is a bank CSV import.",
+            "Typical causes: a large bank CSV import or a full database file upload from Settings.",
             "error",
         )
         if (request.path or "").startswith("/bank"):
@@ -185,6 +232,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         return redirect(url_for("main.dashboard"))
 
     app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
 
     with app.app_context():
         db = get_db()
@@ -215,5 +263,21 @@ def create_app(test_config: dict | None = None) -> Flask:
                 _clear_backup_mirror_failure(app)
             except Exception as exc:
                 _record_backup_mirror_failure(app, exc, detail="Initial backup after schema check failed.")
+
+            if not app.config.get("TESTING"):
+                from .auth_store import count_users, create_user_row, fetch_user_by_email
+
+                bootstrap_email = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_EMAIL", "").strip()
+                bootstrap_password = os.environ.get("TREASURER_BOOTSTRAP_ADMIN_PASSWORD", "")
+                if bootstrap_email and "@" in bootstrap_email and len(bootstrap_password) >= 10 and count_users(db) == 0:
+                    role_row = db.execute("SELECT id FROM roles WHERE code = 'ADMIN'").fetchone()
+                    if role_row and fetch_user_by_email(db, bootstrap_email) is None:
+                        create_user_row(
+                            db,
+                            bootstrap_email,
+                            generate_password_hash(bootstrap_password),
+                            int(role_row["id"]),
+                        )
+                        db.commit()
 
     return app

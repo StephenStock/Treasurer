@@ -5,6 +5,28 @@
 {% block content %}
   <section class="panel">
     <form method="post" class="settings-form">
+      {% if current_user.is_authenticated and (user_can('admin_users') or user_can('admin_role_permissions') or user_can('admin_table_editor')) %}
+        <section class="settings-section">
+          <div class="panel-heading">
+            <div>
+              <h3>Portal access</h3>
+              <p class="section-note">Manage who can sign in and which roles may access each area of the portal.</p>
+            </div>
+          </div>
+          <div class="settings-admin-links">
+            {% if user_can('admin_users') %}
+            <a class="button button-primary" href="{{ url_for('main.settings_portal_users') }}">Portal users</a>
+            {% endif %}
+            {% if user_can('admin_role_permissions') %}
+            <a class="button" href="{{ url_for('main.settings_role_permissions') }}">Role permissions</a>
+            {% endif %}
+            {% if user_can('admin_table_editor') %}
+            <a class="button" href="{{ url_for('main.settings_table_admin') }}">Table admin</a>
+            {% endif %}
+          </div>
+        </section>
+      {% endif %}
+
       <section class="settings-section">
         <div class="panel-heading">
           <div>
@@ -229,6 +251,47 @@
           </button>
         </div>
         <p class="section-note">“Back up now” uses the resolved path in <strong>Backup folder (actual path on disk)</strong> above. If you changed the text field, click <strong>Save Settings</strong> first. Use <strong>Open this folder</strong> if Explorer does not match what you expected.</p>
+      </section>
+
+      <section class="settings-section">
+        <div class="panel-heading">
+          <div>
+            <h3>Copy database file (local PC or server)</h3>
+            <p class="section-note">
+              Download the live SQLite file to your computer for an extra backup, or upload a file to replace the live database
+              (for example after copying from another machine). On Docker, data normally lives in the <code>treasurer-data</code> volume
+              and survives <code>docker compose up --build</code> unless that volume is removed.
+            </p>
+            <p class="section-note">
+              <strong>Cash book:</strong> rows are only auto-imported from the Excel workbook when that workbook sits next to the app
+              and the cash book was still empty. Servers usually have no workbook—use the Cash page in the app, or download a database
+              that already contains the rows and upload it here.
+            </p>
+          </div>
+        </div>
+        <div class="settings-inline-actions">
+          <a class="button button-primary" href="{{ url_for('main.download_database') }}">Download database file</a>
+        </div>
+        <form
+          method="post"
+          action="{{ url_for('main.upload_database') }}"
+          enctype="multipart/form-data"
+          class="settings-form settings-database-upload-form"
+        >
+          <div class="settings-single-field">
+            <label for="database_file">Replace live database from file</label>
+            <input type="file" id="database_file" name="database_file" accept=".db,application/octet-stream">
+          </div>
+          <div class="settings-actions">
+            <button
+              class="button"
+              type="submit"
+              onclick="return confirm('This will replace the entire live database with the uploaded file. The current file is copied aside first. Continue?');"
+            >
+              Upload and replace database
+            </button>
+          </div>
+        </form>
       </section>
 
       <div class="settings-actions">

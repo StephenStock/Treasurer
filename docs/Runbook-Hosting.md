@@ -84,11 +84,18 @@ Fill this in as resources are created. One row per major component.
 
 List **names** of settings here; **do not** paste secret values into this file.
 
+The app is **SQLite-first** in the main codebase; Azure may later use PostgreSQL via a separate migration. For the current Flask app, the following are relevant (see `docs/Runbook.md` for full local behaviour):
+
 | Setting name | Purpose |
 | --- | --- |
-| `FLASK_ENV` or equivalent | |
-| `SECRET_KEY` | |
-| `DATABASE_URL` or discrete DB_* variables | |
+| `SECRET_KEY` | Flask sessions and CSRF; must be set in production |
+| `TREASURER_DATABASE` | Path to live SQLite file (if not using default) |
+| `TREASURER_BACKUP_DATABASE` | Mirrored backup path |
+| `TREASURER_BOOTSTRAP_ADMIN_EMAIL` | Optional: with `TREASURER_BOOTSTRAP_ADMIN_PASSWORD`, creates first **Admin** user when the users table is empty |
+| `TREASURER_BOOTSTRAP_ADMIN_PASSWORD` | Bootstrap password (≥ 10 characters) |
+| `TREASURER_LOGIN_DISABLED` | If set to a truthy value, disables login (automation only; not for production) |
+| `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER` | Optional SMTP for forgot-password emails |
+| `DATABASE_URL` or discrete PostgreSQL variables | Future use if/when Postgres is adopted for this deployment |
 | (Add others as required) | |
 
 After changing configuration, **restart** the App Service if the portal prompts you to.
@@ -133,7 +140,7 @@ The production codebase today targets **SQLite** for local use. A **hosted** dep
 
 1. Merge to the branch connected to deployment (often `main`).
 2. Confirm the deployment pipeline or **Deployment Center** run completes.
-3. Open the site and smoke-test: login path (when implemented), dashboard, critical pages.
+3. Open the site and smoke-test: **sign in** (`/auth/login`), dashboard, bank/cash/settings, and **`GET /healthz`** (plain `ok`, no authentication).
 4. If something fails, open **Log stream** and recent **deployment logs** before changing infrastructure.
 
 ### When the site is down or errors
@@ -176,5 +183,4 @@ Use this when transferring responsibility to another person.
 | Date | Change |
 | --- | --- |
 | | Initial template |
-| 2026-04-03 | Subscription **Lodge 5217** (`04b5447e-729a-4585-bd6f-4610bf3506c3`), resource group **rg-treasurer-dev**, region **UK South** recorded. |
-| | Billing ownership transferred to **`developer5217@outlook.com`**; portal sign-in and billing owner updated in this runbook. Confirm subscription ID in the portal still matches. |
+| 2026-04-03 | Subscription **Lodge 5217** (`04b5447e-729a-4585-bd6f-4610bf3506c3`), resource group **rg-treasurer-dev**, region **UK South** recorded. Billing ownership **`developer5217@outlook.com`**. Application settings table updated for SQLite auth, bootstrap admin, mail, `LOGIN_DISABLED`, and smoke-test steps (`/auth/login`, `/healthz`). Confirm subscription ID in the portal still matches. |

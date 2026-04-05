@@ -12,7 +12,7 @@ import sqlite3
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import current_app, g
@@ -616,6 +616,43 @@ def restore_database_from_backup(primary_path: Path, backup_path: Path) -> None:
 
     shutil.copy2(backup_path, temp_path)
     os.replace(temp_path, primary_path)
+
+
+def verify_sqlite_database_file(path: Path) -> bool:
+    """True if ``path`` opens as a SQLite database with a readable schema."""
+    try:
+        conn = sqlite3.connect(str(path))
+        try:
+            conn.execute("SELECT 1 FROM sqlite_master LIMIT 1")
+        finally:
+            conn.close()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def replace_live_database_file(primary_path: Path, new_db_path: Path) -> Path | None:
+    """Replace the live SQLite file with ``new_db_path``.
+
+    Copies the previous primary file to ``Treasurer.before-restore.<UTC stamp>.db`` in the same
+    folder when it existed. Removes ``-wal`` / ``-shm`` sidecars next to ``primary_path`` so the
+    next connection does not see a stale journal.
+    """
+    ensure_database_parent_path(primary_path)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_prev = primary_path.with_name(f"{primary_path.stem}.before-restore.{stamp}.db")
+    backup_made: Path | None = None
+    if primary_path.exists():
+        shutil.copy2(primary_path, backup_prev)
+        backup_made = backup_prev
+    for side in (Path(f"{primary_path}-wal"), Path(f"{primary_path}-shm")):
+        if side.exists():
+            try:
+                side.unlink()
+            except OSError:
+                pass
+    shutil.copy2(new_db_path, primary_path)
+    return backup_made
 
 
 def _schema_sql_for_sqlite(sql: str) -> str:
@@ -1919,6 +1956,9 @@ def ensure_financial_tables(db: sqlite3.Connection) -> None:
     )
     _ensure_cash_settlement_migration(db)
     _ensure_bank_import_fingerprint(db)
+    from .auth_store import ensure_auth_tables as _ensure_auth_tables
+
+    _ensure_auth_tables(db)
 
 
 def _ensure_bank_import_fingerprint(db: DatabaseHandle) -> None:

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Role permissions | Treasurer Portal{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h3>Role permissions</h3>
+        <p class="section-note">
+          Matrix of what each role may do in the portal. Users with the <strong>Admin</strong> role <strong>always</strong> have full access in practice; checkboxes in the Admin column are only for reference (for example when testing how other roles behave). Other roles follow the matrix.
+        </p>
+      </div>
+    </div>
+
+    <form method="post" class="role-perm-form">
+      <div class="table-scroll role-perm-scroll">
+        <table class="settings-table compact-ledger role-perm-matrix">
+          <thead>
+            <tr>
+              <th scope="col">Permission</th>
+              {% for role in perm_roles %}
+                <th scope="col">{{ role.display_name }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in perm_rows %}
+              <tr>
+                <th scope="row" class="role-perm-desc">{{ row.perm.description }}</th>
+                {% for cell in row.cells %}
+                  <td class="role-perm-cell">
+                    <input
+                      type="checkbox"
+                      name="allow_{{ cell.role.id }}_{{ cell.perm.id }}"
+                      value="1"
+                      {% if cell.checked %}checked{% endif %}
+                      aria-label="{{ cell.role.display_name }}: {{ cell.perm.description }}"
+                    >
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="settings-actions">
+        <button type="submit" class="button button-primary">Save permissions</button>
+        <a class="button" href="{{ url_for('main.settings') }}">Back to Settings</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

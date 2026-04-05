@@ -22,6 +22,8 @@ from treasurer_app.db import (
     remove_legacy_visitor_member,
     set_app_setting,
 )
+from treasurer_app.auth_routes import auth_bp
+from treasurer_app.login_config import init_login_manager, user_can
 from treasurer_app.routes import main_bp
 
 
@@ -42,8 +44,16 @@ class BankPageTestCase(unittest.TestCase):
             DATABASE=":memory:",
             BACKUP_DATABASE=str(Path(__file__).resolve().parent.parent / "instance" / "test-backup.db"),
             SECRET_KEY="test",
+            LOGIN_DISABLED=True,
         )
         self.app.register_blueprint(main_bp)
+        init_login_manager(self.app)
+        self.app.register_blueprint(auth_bp)
+
+        @self.app.context_processor
+        def _inject_user_can():
+            return {"user_can": user_can}
+
         self.ctx = self.app.app_context()
         self.ctx.push()
 
